@@ -1,0 +1,10 @@
+//轨道当值
+//@version=5
+indicator("My script",overlay=true)
+//plot(close)
+stLong=ta.ema(high,33)
+stShort=ta.ema(low,33)
+stLongPlot=plot(stLong,"上轨当值",color.green,transp=0)
+stShortPlot=plot(stShort,"下轨当值",color.red,transp=0)
+clr=close>stLong?color.green:color.red
+fill(stLongPlot,stShortPlot,color=clr)

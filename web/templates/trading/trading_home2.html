@@ -1,0 +1,160 @@
+{% extends "base_menu.html" %}
+{% block content %}
+
+<h1>Trading</h1>
+<div style="float:right">
+<!-- https://www.w3schools.com/howto/howto_css_search_button.asp -->
+<form>
+  <input type="text" placeholder="Search.." name="search"
+  {% if search %} value="{{ search }}" {% endif %}
+  >
+  <button type="submit"><i class="fa fa-search"></i></button>
+<a href="{% url 'ads:all' %}"><i class="fa fa-undo"></i></a>
+</form>
+    <p> </p>
+</div>
+<div>
+{% if tr_list %}
+			<table id="ptable" class="table table-striped table-bordered table-hover">
+				<thead>
+                <tr>
+                    <td class='center'>Symbol</td>
+                    <td class='center'>Price</td>
+                    <td class='center'>Interval</td>
+                    <td class='center'>Date</td>
+                    <td class='center'>Open</td>
+                    <td class='center'>High</td>
+                    <td class='center'>Low</td>
+                    <td class='center'>Close</td>
+                    <td class='center'>Volume</td>
+                    <td class='center'>Price</td>
+                    <td class='center'>Change</td>
+                </tr>
+                </thead>
+                <tbody>
+  {% for tr in tr_list %}
+    {% if tr.interval == 86400 %}
+				<tr>
+        {# <a href="{% url 'trading:trading_detail.html'  tr.id %}">{{ tr.id }}</a> #}
+					<td>{{ tr.symbol }}</td>
+                    <td></td>
+                    <td>{{ tr.interval }}</td>
+                    <td>{{ tr.unix | date:"Y-m-d H:i:s e" }}</td>
+                    <td>{{ tr.open }}</td>
+                    <td>{{ tr.high }}</td>
+                    <td>{{ tr.low }}</td>
+                    <td>{{ tr.close }}</td>
+                    <td>{{ tr.volume }}</td>
+                    <td></td>
+                    <td></td>
+     {% endif %}
+  {% endfor %}
+				</tr>
+    {% if user.is_authenticated %}
+  {% for tr in tr_list %}
+    {% if tr.interval == 3600 %}
+                <tr>
+					<td>{{ tr.symbol }}</td>
+                    <td></td>
+                    <td>{{ tr.interval }}</td>
+                    <td>{{ tr.unix | date:"Y-m-d H:i:s e"}}</td>
+                    <td>{{ tr.open }}</td>
+                    <td>{{ tr.high }}</td>
+                    <td>{{ tr.low }}</td>
+                    <td>{{ tr.close }}</td>
+                    <td>{{ tr.volume }}</td>
+                    <td></td>
+                    <td></td>
+                </tr>
+    {% endif %}
+  {% endfor %}
+    {% endif %}
+    </tbody>
+			</table>
+{% else %}
+  <p>There are no info to show now.</p>
+{% endif %}
+</div>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type="text/javascript">
+$(document).ready(function() {
+    var ipport = "{{ ipport }}";
+// Register to vanilla websocket
+    ws = new WebSocket(ipport);
+    console.log("javascript: ", ipport);
+    ws.onopen = function(e) {
+        console.log("javascript: Successfully connected to the WebSocket.");
+        ws.send('{ "event": "subscribe", "content": "ticker_price" }')
+        ws.send('{ "event": "subscribe", "content": "live_trades" }')
+    }
+    ws.onmessage = (ws_msg) => {
+        // console.log("ws_data", ws_msg.data)
+        try {
+            jsdata = JSON.parse(ws_msg.data)
+            console.log("jsdata:", jsdata)
+        }
+        catch(err) {
+             console.log("None json message bypassed: ", ws_msg.data)
+             return
+        }
+        if (!jsdata || jsdata["channel"] == undefined) return   // no channel info
+        var table = document.getElementById("ptable").rows;
+        pair_ch = jsdata["channel"].toLowerCase().slice(-6)
+        data_item = jsdata["data"]
+        if (jsdata["channel"].slice(0,11) == "live_trades") {
+            live_price = !data_item || data_item["price"] == undefined ? "waiting" : data_item["price"]
+            for (let row of table) {
+                if (pair_ch == row.cells[0].innerText.toLowerCase().replace('/','').slice(-6)) {
+                    pclose = row.cells[6].innerText
+                    data5 = (live_price - pclose).toFixed(6) + " (" + (( live_price / pclose - 1 ) * 100).toFixed(4) + "%)"
+                    // console.log(pair_ch, pclose, data5)
+                    if (live_price == pclose) {
+                        row.cells[9].innerHTML = "<span style='color: black;'>" + live_price + "</span>"
+                        row.cells[10].innerHTML = "<span style='color: black;'>" + data5 + "</span>"
+                    }
+                    else if (live_price > pclose) {
+                        row.cells[9].innerHTML = "<span style='color: green;'>" + live_price + "</span>"
+                        row.cells[10].innerHTML = "<span style='color: green;'>" + data5 + "</span>"
+                    }
+                    else {
+                        row.cells[9].innerHTML = "<span style='color: red;'>" + live_price + "</span>"
+                        row.cells[10].innerHTML = "<span style='color: red;'>" + data5 + "</span>"
+                    }
+                }
+            }
+        }
+
+        if (jsdata["channel"].slice(0,10) == "timer_tick") {
+            data_item = jsdata["data"]
+            timer_price = !data_item || data_item["last"] == undefined ? "waiting" : data_item["last"]
+            for (let row of table) {
+                if (pair_ch == row.cells[0].innerText.toLowerCase().replace('/','').slice(-6)) {
+                    row.cells[1].innerHTML = "<span style='color: black;'>" + timer_price + "</span>"
+                }
+            }
+        }
+    }
+});
+</script>
+
+<!--<p>-->
+<!--<a href="{% url 'ads:ad_create' %}">Add an Ad</a> |-->
+<!--{% if user.is_authenticated %}-->
+<!--<a href="{% url 'logout' %}?next={% url 'ads:all' %}">Logout</a>-->
+<!--{% else %}-->
+<!--<a href="{% url 'login' %}?next={% url 'ads:all' %}">Login</a>-->
+<!--{% endif %}-->
+<!--</p>-->
+<!--<script>-->
+<!--function favPost(url, ad_id) {-->
+<!--    console.log('Requesting JSON');-->
+<!--    $.post(url, {},  function(rowz){-->
+<!--        console.log(url, 'finished');-->
+<!--        $("#unfavorite_star_"+ad_id).toggle();-->
+<!--        $("#favorite_star_"+ad_id).toggle();-->
+<!--    }).fail(function(xhr) {-->
+<!--        alert('Url failed with '+xhr.status+' '+url);-->
+<!--    });-->
+<!--}-->
+<!--</script>-->
+{% endblock %}

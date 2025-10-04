@@ -1,0 +1,29 @@
+bitstamp:
+
+GET: https://www.bitstamp.net/api/v2/trading-pairs-info/
+
+GET: https://www.bitstamp.net/api/v2/ticker/
+GET: https://www.bitstamp.net/api/v2/ticker/btcusd
+
+GET: https://www.bitstamp.net/api/v2/ticker_hour/btcusd
+GET: https://www.bitstamp.net/api/v2/ohlc/btcusd?end=1675296000&step=86400&limit=1
+60, 180, 300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400, 259200
+
+GET: https://www.bitstamp.net/api/v2/transactions/btcusd?time=minute
+* last 60 seconds transaction
+
+wss://ws.bitstamp.net
+{
+    "event": "bts:subscribe",
+    "data": {
+        "channel": "live_trades_btcusd"
+    }
+}
+
+wss://ws.bitstamp.net
+{
+    "event": "bts:unsubscribe",
+    "data": {
+        "channel": "order_book_ethbtc"
+    }
+}

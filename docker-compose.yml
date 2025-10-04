@@ -1,0 +1,100 @@
+version: '3.9'
+
+services:
+  redis:
+    image: 'redis:latest'
+    restart: always
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    build: ./postgres
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: vanilla
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 2022pass
+
+  bot:
+    build: ./bot
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+  web:
+    build: ./web
+    ports:
+      - "8082:8082"
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # - SERVER_IP=dev.ismartinfo.net
+      - SERVER_IP=localhost
+      - SERVER_PORT=8082
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80" 
+      - "443:443"
+    depends_on:
+      - web
+    volumes:
+      # - type: bind
+      #   source: /etc/letsencrypt/live/ismartinfo.net/fullchain.pem
+      #   target: /etc/letsencrypt/live/ismartinfo.net/fullchain.pem
+      #   read_only: true
+      # - type: bind
+      #   source: /etc/letsencrypt/live/ismartinfo.net/privkey.pem
+      #   target: /etc/letsencrypt/live/ismartinfo.net/privkey.pem
+      #   read_only: true
+      - type: bind
+        source: /usr/local/etc/openssl/ssl/localhost.crt
+        target: /etc/ssl/local/localhost.crt
+        read_only: true
+      - type: bind
+        source: /usr/local/etc/openssl/ssl/localhost.key
+        target: /etc/ssl/local/localhost.key
+        read_only: true
+      - vanilla-data:/web/static
+    restart: always
+
+  go:
+    build:
+      context: ./gobackend
+      dockerfile: Dockerfile
+    # container_name: go
+    # restart: always
+    depends_on:
+      - redis
+      - postgres
+    ports:
+      - "8083:8083"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # REDIS_PASSWORD: 
+      PG_HOST: postgres
+      PG_PORT: 5432
+      PG_DATABASE: vanilla
+      PG_USER: postgres
+      PG_PASSWORD: 2022pass
+
+volumes:
+  redis-data:
+  postgres-data:
+  vanilla-data:

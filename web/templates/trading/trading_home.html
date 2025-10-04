@@ -1,0 +1,210 @@
+{% extends "base_menu.html" %}
+{% load static %}
+{% block extra_css %}
+    <link rel="stylesheet" href="{% static 'css/trading.css' %}">
+{% endblock %}
+{% block content %}
+
+<h1 style="display: inline;">Trading</h1>
+<div style="float: right;">
+  <span id="current-time" style="font-size: 20px;"></span>
+</div>
+<div style="float:right; clear: both;">
+<!-- https://www.w3schools.com/howto/howto_css_search_button.asp -->
+<form>
+  <input type="text" placeholder="Search.." name="search"
+  {% if search %} value="{{ search }}" {% endif %}
+  >
+  <button type="submit"><i class="fa fa-search"></i></button>
+<a href="{% url 'ads:all' %}"><i class="fa fa-undo"></i></a>
+</form>
+    <p> </p>
+</div>
+<div>
+
+
+<table id="alltable" class="table table-striped table-bordered table-hover">
+    <thead>
+    <tr>
+        <td class='center'>Symbol</td>
+        <td class='center'>Price</td>
+        <td class='center'>1m</td>
+        <td class='center'>5m</td>
+        <td class='center'>15m</td>
+        <td class='center'>1H</td>
+        <td class='center'>4H</td>
+        <td class='center'>1D</td>
+        <td class='center'>1W</td>
+        <td class='center'>Price</td>
+        <td class='center'>Change</td>
+    </tr>
+    </thead>
+    <tbody>
+        {% for symbol, symbol_info in symbol_data.items %}
+        <tr>
+            <td>{{ symbol }}</td>
+            <td id="{{ symbol }}_price">{{ symbol_info.price }}</td>
+            {% for interval, indicator_info in symbol_info.indicators.items %}
+                {% if interval in '1m,5m,15m' %}
+                    {% if user.is_authenticated %}
+                        <td>
+                            {% if indicator_info == "N/A" %}
+                                N/A
+                            {% else %}
+                                Close: {{ indicator_info.ohlc_close }}<br>
+                                Change: {{ indicator_info.change }}<br>
+                                Volume: {{ indicator_info.volume }}<br>
+                                MA20: {{ indicator_info.ma20 }}<br>
+                                MA50: {{ indicator_info.ma50 }}<br>
+                                MACD: {{ indicator_info.macd }}<br>
+                                Signal: {{ indicator_info.signal }}</br>
+                                Histogram: {{ indicator_info.histogram }}<br>
+                                RSI: {{ indicator_info.rsi }}<br>
+                                Stoch_K: {{ indicator_info.stoch_k }}<br>
+                                Stoch_D: {{ indicator_info.stoch_d }}<br>
+                                EMA:  {{ indicator_info.closeEMA }}<br>
+                                UpperEMA: {{ indicator_info.upperEMA }}<br>
+                                LowerEMA: {{ indicator_info.lowerEMA }}<br>
+                                KDJ_K: {{ indicator_info.kdj_k }}<br>
+                                KDJ_D: {{ indicator_info.kdj_d }}<br>
+                                KDJ_J: {{ indicator_info.kdj_j }}<br>
+                                {% endif %}
+                        </td>
+                    {% else %}
+                        <td>Log in to see data</td>
+                    {% endif %}
+                {% else %}
+                    <td>
+                        {% if indicator_info == "N/A" %}
+                            N/A
+                        {% else %}
+                            Close: {{ indicator_info.ohlc_close }}<br>
+                            Change: {{ indicator_info.change }}<br>
+                            Volume: {{ indicator_info.volume }}<br>
+                            MA20: {{ indicator_info.ma20 }}<br>
+                            MA50: {{ indicator_info.ma50 }}<br>
+                            MACD: {{ indicator_info.macd }}<br>
+                            Signal: {{ indicator_info.signal }}</br>
+                            Histogram: {{ indicator_info.histogram }}<br>
+                            RSI: {{ indicator_info.rsi }}<br>
+                            Stoch_K: {{ indicator_info.stoch_k }}<br>
+                            Stoch_D: {{ indicator_info.stoch_d }}<br>
+                            EMA:  {{ indicator_info.closeEMA }}<br>
+                            UpperEMA: {{ indicator_info.upperEMA }}<br>
+                            LowerEMA: {{ indicator_info.lowerEMA }}<br>
+                            KDJ_K: {{ indicator_info.kdj_k }}<br>
+                            KDJ_D: {{ indicator_info.kdj_d }}<br>
+                            KDJ_J: {{ indicator_info.kdj_j }}<br>
+                        {% endif %}
+                    </td>
+                {% endif %}
+            {% endfor %}
+            <td></td>
+            <td></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type="text/javascript">
+$(document).ready(function() {
+    var ipport = "{{ ipport }}";
+// Register to vanilla websocket
+    ws = new WebSocket(ipport);
+    console.log("javascript: ", ipport);
+    ws.onopen = function(e) {
+        console.log("javascript: Successfully connected to the WebSocket.");
+        ws.send('{ "event": "subscribe", "content": "ticker_price" }')
+        ws.send('{ "event": "subscribe", "content": "live_trades" }')
+    }
+    ws.onmessage = (ws_msg) => {
+        // console.log("ws_data", ws_msg.data)
+        try {
+            jsdata = JSON.parse(ws_msg.data)
+            console.log("jsdata:", jsdata)
+        }
+        catch(err) {
+             console.log("None json message bypassed: ", ws_msg.data)
+             return
+        }
+        if (!jsdata || jsdata["channel"] == undefined) return   // no channel info
+        var table = document.getElementById("alltable").rows;
+        pair_ch = jsdata["channel"].toLowerCase().slice(-6)
+        data_item = jsdata["data"]
+        if (jsdata["channel"].slice(0,11) == "live_trades") {
+            live_price = !data_item || data_item["price"] == undefined ? "waiting" : data_item["price"]
+            for (let row of table) {
+                if (pair_ch == row.cells[0].innerText.toLowerCase().replace('/','').slice(-6)) {
+                    // data5 = (live_price - pclose).toFixed(6) + " (" + (( live_price / pclose - 1 ) * 100).toFixed(4) + "%)"
+                    // console.log(pair_ch, pclose, data5)
+                    row.cells[1].innerHTML = "<span style='color: black;'>" + live_price + "</span>"
+                    // Replace 'your-symbol' with the actual symbol you want to target
+
+                    let element = document.getElementById(row.cells[0].innerText + '_price');
+                    element.classList.add('flash');
+                    setTimeout(() => {
+                        element.classList.remove('flash');
+                    }, 3000);
+                }
+            }
+        }
+
+        if (jsdata["channel"].slice(0,10) == "timer_tick") {
+            data_item = jsdata["data"]
+            timer_price = !data_item || data_item["last"] == undefined ? "waiting" : data_item["last"]
+            for (let row of table) {
+                if (pair_ch == row.cells[0].innerText.toLowerCase().replace('/','').slice(-6)) {
+                    row.cells[1].innerHTML = "<span style='color: black;'>" + timer_price + "</span>"
+                }
+            }
+        }
+    }
+
+    function formatLocalTime() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const timezoneOffset = -now.getTimezoneOffset() / 60;
+        const timezoneSign = timezoneOffset >= 0 ? '+' : '-';
+        const timezone = `UTC${timezoneSign}${Math.abs(timezoneOffset)}`;
+        
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${timezone}`;
+    }
+
+    document.getElementById('current-time').innerText = formatLocalTime();
+
+    function updateCurrentTime() {
+        document.getElementById('current-time').innerText = formatLocalTime();
+    }
+
+    setInterval(updateCurrentTime, 1000);
+
+});
+</script>
+
+<!--<p>-->
+<!--<a href="{% url 'ads:ad_create' %}">Add an Ad</a> |-->
+<!--{% if user.is_authenticated %}-->
+<!--<a href="{% url 'logout' %}?next={% url 'ads:all' %}">Logout</a>-->
+<!--{% else %}-->
+<!--<a href="{% url 'login' %}?next={% url 'ads:all' %}">Login</a>-->
+<!--{% endif %}-->
+<!--</p>-->
+<!--<script>-->
+<!--function favPost(url, ad_id) {-->
+<!--    console.log('Requesting JSON');-->
+<!--    $.post(url, {},  function(rowz){-->
+<!--        console.log(url, 'finished');-->
+<!--        $("#unfavorite_star_"+ad_id).toggle();-->
+<!--        $("#favorite_star_"+ad_id).toggle();-->
+<!--    }).fail(function(xhr) {-->
+<!--        alert('Url failed with '+xhr.status+' '+url);-->
+<!--    });-->
+<!--}-->
+<!--</script>-->
+{% endblock %}

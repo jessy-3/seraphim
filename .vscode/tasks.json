@@ -1,0 +1,11 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-gobackend",
+            "type": "shell",
+            "command": "go build -o ${workspaceFolder}/gobackend/gobackend ${workspaceFolder}/gobackend/main.go",
+            "problemMatcher": []
+        }
+    ]
+}
