@@ -1,0 +1,70 @@
+[tool.poetry]
+name = "seraphim"
+version = "0.1.0"
+description = "Personal Crypto and Stock Trading System"
+authors = ["Jessy <jessy@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+# Django Core
+django = "^4.2"
+djangorestframework = "^3.14"
+
+# Async & WebSocket
+channels = "^4.0"
+channels-redis = "^4.1"
+uvicorn = {extras = ["standard"], version = "^0.24"}
+
+# Task Queue
+celery = {extras = ["redis"], version = "^5.3"}
+redis = "^5.0"
+
+# Database
+psycopg2-binary = "^2.9"
+
+# Trading APIs
+ccxt = "^4.1"
+ib-insync = "^0.9.86"
+
+# Technical Analysis
+TA-Lib = "^0.4.28"
+pandas = "^2.1"
+numpy = "^1.24"
+
+# Utilities
+python-decouple = "^3.8"
+django-crontab = "^0.7"
+django-cors-headers = "^4.3"
+django-taggit = "^4.0"
+django-crispy-forms = "^2.0"
+drf-yasg = "^1.21"
+social-auth-app-django = "^5.4"
+django-humanize = "^0.1"
+
+# Optional Bot (simplified)
+aiogram = {version = "^3.2", optional = true}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4"
+pytest-django = "^4.7"
+black = "^23.0"
+flake8 = "^6.1"
+isort = "^5.12"
+
+[tool.poetry.extras]
+bot = ["aiogram"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+

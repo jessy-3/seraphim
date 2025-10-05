@@ -1,4 +1,5 @@
-version: '3.9'
+# Seraphim Trading System - Docker Compose Configuration
+# version: '3.9' # Removed as it's obsolete in new Docker Compose versions
 
 services:
   redis:
@@ -22,15 +23,15 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 2022pass
 
-  bot:
-    build: ./bot
-    restart: unless-stopped
-    depends_on:
-      - redis
-      - postgres
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+  # bot: # Moved to legacy, will be reimplemented
+  #   build: ./bot
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - redis
+  #     - postgres
+  #   environment:
+  #     - REDIS_HOST=redis
+  #     - REDIS_PORT=6379
 
   web:
     build: ./web
@@ -73,26 +74,23 @@ services:
       - vanilla-data:/web/static
     restart: always
 
-  go:
-    build:
-      context: ./gobackend
-      dockerfile: Dockerfile
-    # container_name: go
-    # restart: always
-    depends_on:
-      - redis
-      - postgres
-    ports:
-      - "8083:8083"
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      # REDIS_PASSWORD: 
-      PG_HOST: postgres
-      PG_PORT: 5432
-      PG_DATABASE: vanilla
-      PG_USER: postgres
-      PG_PASSWORD: 2022pass
+  # go: # Removed - functionality migrated to Django
+  #   build:
+  #     context: ./gobackend
+  #     dockerfile: Dockerfile
+  #   depends_on:
+  #     - redis
+  #     - postgres
+  #   ports:
+  #     - "8083:8083"
+  #   environment:
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     PG_HOST: postgres
+  #     PG_PORT: 5432
+  #     PG_DATABASE: vanilla
+  #     PG_USER: postgres
+  #     PG_PASSWORD: 2022pass
 
 volumes:
   redis-data:
