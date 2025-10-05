@@ -1,2 +1,2 @@
-# vanilla
-Vanilla Django project and API services
+# seraphim
+Seraphim Django project and API services by Seraphina

@@ -36,9 +36,9 @@ else
     echo "🚀 Starting Uvicorn ASGI server..."
     # Fallback to Daphne if Uvicorn not available yet
     if command -v uvicorn &> /dev/null; then
-        uvicorn vanilla.asgi:application --host 0.0.0.0 --port 8082 --workers 2
+            uvicorn seraphim.asgi:application --host 0.0.0.0 --port 8082 --workers 2
     else
         echo "📡 Using Daphne as fallback..."
-        daphne vanilla.asgi:application -b 0.0.0.0 -p 8082 --proxy-headers
+            daphne seraphim.asgi:application -b 0.0.0.0 -p 8082 --proxy-headers
     fi
 fi

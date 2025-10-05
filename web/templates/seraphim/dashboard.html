@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en" x-data="{ darkMode: false }" :class="{ 'dark': darkMode }">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name }}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#8b5cf6',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Chart.js for price charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- WebSocket for real-time data -->
+    <script>
+        const wsScheme = window.location.protocol == "https:" ? "wss" : "ws";
+        const wsPath = wsScheme + '://' + window.location.host + '/ws/ticks/';
+    </script>
+</head>
+
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-300" x-data="tradingDashboard()">
+    <!-- Navigation -->
+    <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <h1 class="text-xl font-bold text-gray-900 dark:text-white">
+                        🔥 Seraphim Trading
+                    </h1>
+                </div>
+                
+                <!-- Navigation Items -->
+                <div class="flex items-center space-x-4">
+                    <button 
+                        @click="darkMode = !darkMode"
+                        class="p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    >
+                        <span x-show="!darkMode">🌙</span>
+                        <span x-show="darkMode">☀️</span>
+                    </button>
+                    
+                    {% if is_authenticated %}
+                        <span class="text-gray-700 dark:text-gray-300">{{ user.username }}</span>
+                        <a href="{% url 'logout' %}" class="text-red-600 hover:text-red-700">Logout</a>
+                    {% else %}
+                        <a href="{% url 'login' %}" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600">Login</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- Market Overview -->
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">Market Overview</h2>
+            
+            <!-- Price Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                {% for symbol in symbols_with_prices %}
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ symbol.name }}</p>
+                            <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                                {% if symbol.price %}
+                                    ${{ symbol.price|floatformat:2 }}
+                                {% else %}
+                                    --
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="text-right">
+                            {% if symbol.price_source == 'database' %}
+                                <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+                                    Historical
+                                </span>
+                            {% elif symbol.price_source == 'live' %}
+                                <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+                                    Live
+                                </span>
+                            {% endif %}
+                            <div class="mt-1">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                      :class="getPriceChangeClass('{{ symbol.name }}')">
+                                    <span x-text="getPriceChange('{{ symbol.name }}')">--</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Trading Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Price Chart -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Price Chart</h3>
+                    <select x-model="selectedSymbol" @change="loadChartData()" 
+                            class="rounded-md border-gray-300 text-sm focus:border-primary focus:ring-primary">
+                        {% for symbol in symbols %}
+                        <option value="{{ symbol.name }}">{{ symbol.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="h-64">
+                    <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Indicators -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Technical Indicators</h3>
+                {% if is_authenticated %}
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">RSI (14)</span>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.rsi || '--'">--</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">MACD</span>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.macd || '--'">--</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">SMA (20)</span>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.sma_20 || '--'">--</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">EMA (12)</span>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.ema_12 || '--'">--</span>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center py-8">
+                    <p class="text-gray-500 dark:text-gray-400 mb-4">Login to view technical indicators</p>
+                    <a href="{% url 'login' %}" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-600">Login</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- System Status -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">System Status</h3>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center">
+                    <div class="w-3 h-3 rounded-full mr-2" :class="wsConnected ? 'bg-green-500' : 'bg-red-500'"></div>
+                    <span class="text-sm text-gray-700 dark:text-gray-300">WebSocket</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                    <span class="text-sm text-gray-700 dark:text-gray-300">Database</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                    <span class="text-sm text-gray-700 dark:text-gray-300">Redis</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function tradingDashboard() {
+            return {
+                selectedSymbol: 'BTC/USD',
+                livePrice: {},
+                indicators: {},
+                wsConnected: false,
+                priceChart: null,
+                socket: null,
+
+            init() {
+                this.initWebSocket();
+                this.initChart();
+                this.loadChartData();
+                this.loadInitialPrices();
+            },
+
+            async loadInitialPrices() {
+                // Load prices from server-side data
+                {% for symbol in symbols_with_prices %}
+                {% if symbol.price %}
+                this.livePrice['{{ symbol.name }}'] = '${{ symbol.price|floatformat:2 }}';
+                {% endif %}
+                {% endfor %}
+            },
+
+                initWebSocket() {
+                    try {
+                        this.socket = new WebSocket(wsPath);
+                        
+                        this.socket.onopen = () => {
+                            this.wsConnected = true;
+                            console.log('WebSocket connected');
+                        };
+                        
+                        this.socket.onmessage = (event) => {
+                            const data = JSON.parse(event.data);
+                            this.updateLivePrice(data);
+                        };
+                        
+                        this.socket.onclose = () => {
+                            this.wsConnected = false;
+                            console.log('WebSocket disconnected');
+                            // Reconnect after 5 seconds
+                            setTimeout(() => this.initWebSocket(), 5000);
+                        };
+                    } catch (error) {
+                        console.error('WebSocket error:', error);
+                    }
+                },
+
+                updateLivePrice(data) {
+                    // Update live prices from WebSocket data
+                    if (data.channel && data.data) {
+                        const symbol = data.channel.replace('live_', '').replace('_', '/').toUpperCase();
+                        this.livePrice[symbol] = parseFloat(data.data.price).toFixed(2);
+                    }
+                },
+
+                getPriceChange(symbol) {
+                    // Calculate price change percentage
+                    // This would need historical data to calculate properly
+                    return '+0.00%';
+                },
+
+                getPriceChangeClass(symbol) {
+                    // Return CSS classes based on price change
+                    return 'bg-gray-100 text-gray-800';
+                },
+
+                async loadChartData() {
+                    try {
+                        const response = await fetch(`/api/market-data/?symbol=${this.selectedSymbol}`);
+                        const data = await response.json();
+                        this.updateChart(data);
+                        
+                        if (data.indicators && data.indicators.length > 0) {
+                            const latest = data.indicators[0];
+                            this.indicators = {
+                                rsi: latest.rsi ? latest.rsi.toFixed(2) : '--',
+                                macd: latest.macd ? latest.macd.toFixed(4) : '--',
+                                sma_20: latest.sma_20 ? latest.sma_20.toFixed(2) : '--',
+                                ema_12: latest.ema_12 ? latest.ema_12.toFixed(2) : '--'
+                            };
+                        }
+                    } catch (error) {
+                        console.error('Error loading chart data:', error);
+                    }
+                },
+
+                initChart() {
+                    const ctx = document.getElementById('priceChart').getContext('2d');
+                    this.priceChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [],
+                            datasets: [{
+                                label: 'Price',
+                                data: [],
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                borderWidth: 2,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: false,
+                                    grid: {
+                                        color: 'rgba(156, 163, 175, 0.2)'
+                                    }
+                                },
+                                x: {
+                                    grid: {
+                                        color: 'rgba(156, 163, 175, 0.2)'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                },
+
+                updateChart(data) {
+                    if (this.priceChart && data.ohlc) {
+                        const labels = data.ohlc.map(item => 
+                            new Date(item.timestamp).toLocaleDateString()
+                        ).reverse();
+                        const prices = data.ohlc.map(item => item.close).reverse();
+                        
+                        this.priceChart.data.labels = labels;
+                        this.priceChart.data.datasets[0].data = prices;
+                        this.priceChart.data.datasets[0].label = this.selectedSymbol;
+                        this.priceChart.update();
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

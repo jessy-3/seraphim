@@ -3,7 +3,7 @@ FROM python:3.11
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV DJANGO_SETTINGS_MODULE=vanilla.settings
+ENV DJANGO_SETTINGS_MODULE=seraphim.settings
 
 # Set the working directory to /app
 WORKDIR /app

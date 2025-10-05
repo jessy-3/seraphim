@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Seraphim - Simple Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .price-card { border: 1px solid #ddd; padding: 20px; margin: 10px; display: inline-block; width: 200px; }
+        .symbol { font-weight: bold; font-size: 18px; }
+        .price { font-size: 24px; color: #007bff; margin: 10px 0; }
+        .source { font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>🔥 Seraphim Trading System</h1>
+    <h2>Live Prices</h2>
+    
+    <div class="price-cards">
+        {% for symbol in symbols_with_prices %}
+        <div class="price-card">
+            <div class="symbol">{{ symbol.name }}</div>
+            <div class="price">
+                {% if symbol.price %}
+                    ${{ symbol.price|floatformat:2 }}
+                {% else %}
+                    No Price Data
+                {% endif %}
+            </div>
+            <div class="source">Source: {{ symbol.price_source }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <h2>Debug Info</h2>
+    <p>Total symbols: {{ symbols|length }}</p>
+    <p>Symbols with prices: {% for s in symbols_with_prices %}{% if s.price %}{{ s.name }} {% endif %}{% endfor %}</p>
+</body>
+</html>
