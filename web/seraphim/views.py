@@ -7,6 +7,7 @@ from api.models import SymbolInfo, OhlcPrice, Indicator
 from api.providers.kraken_provider import get_kraken_provider
 # Delay IBKR import to avoid uvloop conflicts during Django startup
 # from api.providers.ibkr_socket_provider import get_ibkr_socket_provider
+from api.providers.ibkr_simple_provider import get_ibkr_simple_provider
 import redis
 import json
 import logging
@@ -84,20 +85,28 @@ class DashboardView(View):
         
         # Initialize IBKR provider for stock data  
         ibkr_stock_data = {}
-        # IBKR Socket integration available but market data requires subscription
-        logger.info("IBKR Socket API available - market data requires IBKR subscription")
-        
-        # Get stock symbols from database (market_id=2 for IBKR stocks)
-        stock_symbols_in_db = [s for s in symbols if s.market_id == 2]
-        logger.info(f"Found {len(stock_symbols_in_db)} IBKR stock symbols in database")
-        
-        # Create placeholder data showing IBKR API status  
-        for symbol in stock_symbols_in_db:
-            ibkr_stock_data[symbol.name] = {
-                'price': 0.0,  # Requires market data subscription
-                'source': 'IBKR (Subscription Required)',
-                'status': 'subscription_needed'
-            }
+        try:
+            ibkr_provider = get_ibkr_simple_provider()
+            
+            # Get stock symbols from database (market_id=2 for IBKR stocks)
+            stock_symbols_in_db = [s.name for s in symbols if s.market_id == 2]
+            logger.info(f"Found {len(stock_symbols_in_db)} IBKR stock symbols in database")
+            
+            if stock_symbols_in_db:
+                # Get market data using simple provider (avoids uvloop conflicts)
+                ibkr_stock_data = ibkr_provider.get_market_data(stock_symbols_in_db)
+                logger.info(f"IBKR data provider initialized for {len(stock_symbols_in_db)} symbols")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize IBKR simple provider: {e}")
+            # Fallback to placeholder
+            stock_symbols_in_db = [s for s in symbols if s.market_id == 2]
+            for symbol in stock_symbols_in_db:
+                ibkr_stock_data[symbol.name] = {
+                    'price': 0.0,
+                    'source': 'IBKR (Error)',
+                    'status': 'error'
+                }
         
         # Get Redis connection for fallback prices  
         live_prices = {}
@@ -218,17 +227,22 @@ class MarketDataView(View):
     
     def get(self, request):
         symbol = request.GET.get('symbol', 'BTC/USD')
-        interval = request.GET.get('interval', '1d')
+        interval_seconds = int(request.GET.get('interval', '86400'))  # Default to 1D (86400 seconds)
         
-        # Get OHLC data
+        # Get OHLC data for the specific interval
         ohlc_data = OhlcPrice.objects.filter(
-            symbol=symbol
+            symbol=symbol,
+            interval=interval_seconds
         ).order_by('-date')[:100]
         
-        # Get indicators if user is logged in
+        # Get indicators for the specific interval (if available)
+        # Note: Current Indicator model doesn't have interval field, using all for now
         indicators = Indicator.objects.filter(
             symbol=symbol
         ).order_by('-timestamp')[:100]
+        
+        # Add debug info
+        logger.info(f"MarketDataView: symbol={symbol}, interval={interval_seconds}, ohlc_count={ohlc_data.count()}, indicators_count={indicators.count()}")
         
         data = {
             'ohlc': [

@@ -10,11 +10,14 @@ __author__ = "Seraphina"
 from .kraken_provider import KrakenDataProvider, get_kraken_provider
 # Temporarily disable IBKR import to avoid uvloop conflicts during Django startup
 # from .ibkr_socket_provider import IBKRSocketProvider, get_ibkr_socket_provider
+from .ibkr_simple_provider import IBKRSimpleProvider, get_ibkr_simple_provider
 
 __all__ = [
     'KrakenDataProvider', 
     'get_kraken_provider',
-    # Temporarily disabled - IBKR providers commented out
+    'IBKRSimpleProvider',
+    'get_ibkr_simple_provider',
+    # Temporarily disabled - IBKR Socket providers commented out
     # 'IBKRSocketProvider',
     # 'get_ibkr_socket_provider'
 ]
