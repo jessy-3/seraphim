@@ -1,16 +1,16 @@
 [tool.poetry]
 name = "seraphim"
 version = "0.1.0"
-description = "Personal Crypto and Stock Trading System"
-authors = ["Jessy <jessy@example.com>"]
+description = "Seraphim Trading System by Seraphina"
+authors = ["Seraphina <seraphina@example.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.13"
 
 # Django Core
-django = "^4.2"
-djangorestframework = "^3.14"
+django = "^5.2"
+djangorestframework = "^3.15"
 
 # Async & WebSocket
 channels = "^4.0"
@@ -62,7 +62,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 88
-target-version = ['py311']
+target-version = ['py313']
 
 [tool.isort]
 profile = "black"

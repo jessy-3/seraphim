@@ -38,3 +38,8 @@ subscriptions.json
 *.log
 */pkg/mod/
 gobackend/gobackend
+# Environment Variables (contains sensitive data)
+.env
+web/.env
+*.env
+

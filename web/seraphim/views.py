@@ -4,8 +4,12 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from api.wsclient import ws_client
 from api.models import SymbolInfo, OhlcPrice, Indicator
+from api.providers.kraken_provider import get_kraken_provider
 import redis
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DashboardView(View):
@@ -18,7 +22,45 @@ class DashboardView(View):
         # Get basic market data
         symbols = SymbolInfo.objects.all()  # Show all symbols for now
         
-        # Get Redis connection for real-time prices, fallback to database
+        # Initialize Kraken provider for live data
+        kraken_live_data = {}
+        try:
+            kraken_provider = get_kraken_provider()
+            
+            # Map database symbols to Kraken pairs (Kraken uses extended names)
+            kraken_symbol_map = {
+                'BTC/USD': 'XXBTZUSD',
+                'ETH/USD': 'XETHZUSD', 
+                'ETH/BTC': 'XETHXXBT',
+                'LTC/USD': 'XLTCZUSD',
+                'XRP/USD': 'XXRPZUSD'
+            }
+            
+            # Get live prices from Kraken for mapped symbols
+            kraken_pairs = [pair for pair in kraken_symbol_map.values()]
+            try:
+                live_ticker = kraken_provider.get_ticker(kraken_pairs)
+                logger.info(f"Retrieved live data for {len(live_ticker)} pairs from Kraken")
+                
+                # Convert to our format
+                for symbol_name, kraken_pair in kraken_symbol_map.items():
+                    if kraken_pair in live_ticker:
+                        ticker_data = live_ticker[kraken_pair]
+                        kraken_live_data[symbol_name] = {
+                            'price': float(ticker_data['c'][0]),
+                            'bid': float(ticker_data['b'][0]),
+                            'ask': float(ticker_data['a'][0]),
+                            'volume_24h': float(ticker_data['v'][1]),
+                            'source': 'Kraken Live'
+                        }
+                        
+            except Exception as e:
+                logger.warning(f"Failed to get live Kraken data: {e}")
+                
+        except Exception as e:
+            logger.error(f"Failed to initialize Kraken provider: {e}")
+        
+        # Get Redis connection for fallback prices  
         live_prices = {}
         try:
             r = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
@@ -37,6 +79,7 @@ class DashboardView(View):
                             'source': 'database'
                         }
         except Exception as e:
+            logger.warning(f"Redis connection failed: {e}")
             # Fallback to database prices for all symbols
             for symbol in symbols:
                 latest_price = OhlcPrice.objects.filter(symbol=symbol.name).order_by('-date').first()
@@ -56,7 +99,20 @@ class DashboardView(View):
                 'price': None,
                 'price_source': 'none'
             }
-            if symbol.name in live_prices:
+            
+            # Priority 1: Kraken live data
+            if symbol.name in kraken_live_data:
+                kraken_data = kraken_live_data[symbol.name]
+                symbol_data.update({
+                    'price': kraken_data['price'],
+                    'price_source': 'Kraken Live',
+                    'bid': kraken_data.get('bid'),
+                    'ask': kraken_data.get('ask'),
+                    'volume_24h': kraken_data.get('volume_24h')
+                })
+                
+            # Priority 2: Redis cache or database
+            elif symbol.name in live_prices:
                 price_info = live_prices[symbol.name]
                 symbol_data['price'] = price_info['price']
                 symbol_data['price_source'] = price_info.get('source', 'live')
@@ -68,6 +124,8 @@ class DashboardView(View):
             'symbols': symbols,
             'symbols_with_prices': symbols_with_prices,
             'live_prices': live_prices,
+            'kraken_integration': True,
+            'kraken_live_count': len(kraken_live_data),
             'is_authenticated': request.user.is_authenticated,
             'app_name': 'Seraphim Trading System',
         }

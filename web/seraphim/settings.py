@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 from pathlib import Path
 import os
 import sys
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -146,6 +147,15 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+# External API Configuration
+# Kraken API - loaded from environment variables
+KRAKEN_API_KEY = config('KRAKEN_API_KEY', default='')
+KRAKEN_API_SECRET = config('KRAKEN_API_SECRET', default='')
+
+# Interactive Brokers API (to be configured later)
+IBKR_API_ENABLED = config('IBKR_API_ENABLED', default=False, cast=bool)
+IBKR_CLIENT_ID = config('IBKR_CLIENT_ID', default='')
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.0/topics/i18n/
