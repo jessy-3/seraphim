@@ -85,7 +85,7 @@ class WebSocketClient(threading.Thread):
                 sym= grp_name[grp_name.rfind('_')+1:].upper()
                 pair = sym[:len(sym)-3]+'/'+sym[len(sym)-3:] + "_Price"
                 data= json.loads(message)['data']
-                r.hmset(pair, {"price": data["price_str"], "timestamp": data["timestamp"], "source":"live"})
+                r.hmset(pair, {"price": data["price_str"], "timestamp": data["timestamp"], "source":"BitStamp Live"})
 
             grp_name = grp_name[:grp_name.find('_', -10)]
             # print(grp_name)
@@ -100,13 +100,16 @@ class WebSocketClient(threading.Thread):
 
     def on_open(self, ws):
         print('Opened the connection...')
-        # Auto-subscribe to major trading pairs
+        # Auto-subscribe to all trading pairs
         trading_pairs = [
-            "live_trades_btcusd",
-            "live_trades_ethusd", 
-            "live_trades_ethbtc",
-            "live_trades_ltcusd",
-            "live_trades_xrpusd"
+            "live_trades_btcusd",   # BTC/USD
+            "live_trades_ethusd",   # ETH/USD  
+            "live_trades_ltcusd",   # LTC/USD
+            "live_trades_xrpusd",   # XRP/USD
+            "live_trades_bchusd",   # BCH/USD
+            "live_trades_linkusd",  # LINK/USD
+            "live_trades_dogeusd",  # DOGE/USD
+            "live_trades_ethbtc"    # ETH/BTC
         ]
         for pair in trading_pairs:
             subscribe_msg = eventdata("subscribe", pair)

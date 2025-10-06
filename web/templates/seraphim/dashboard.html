@@ -108,9 +108,9 @@
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ symbol.name }}</p>
-                            <p class="text-2xl font-bold text-gray-900 dark:text-white" x-text="livePrice['{{ symbol.name }}'] || '${{ symbol.price|floatformat:2 }}' || '--'">
+                            <p class="text-2xl font-bold text-gray-900 dark:text-white" x-text="formatPrice('{{ symbol.name }}', livePrice['{{ symbol.name }}'] || '{{ symbol.price|floatformat:2 }}')">
                                 {% if symbol.price %}
-                                    ${{ symbol.price|floatformat:2 }}
+                                    {% if symbol.name|slice:'-4:' == '/USD' or symbol.name == 'XAUUSD' or symbol.name == 'IAU' or symbol.name == 'TSLA' %}${% endif %}{{ symbol.price|floatformat:2 }}{% if symbol.name|slice:'-4:' == '/BTC' %} ₿{% endif %}
                                 {% else %}
                                     --
                                 {% endif %}
@@ -124,6 +124,14 @@
                             {% elif symbol.price_source == 'IBKR Live' %}
                                 <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800">
                                     📈 IBKR Live
+                                </span>
+                            {% elif 'IBKR' in symbol.price_source and 'Subscription' in symbol.price_source %}
+                                <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
+                                    🔑 Subscription Required
+                                </span>
+                            {% elif 'BitStamp' in symbol.price_source or 'bitstamp' in symbol.price_source %}
+                                <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">
+                                    🌊 BitStamp Live
                                 </span>
                             {% elif symbol.price_source == 'database' or symbol.price_source == 'Historical DB' %}
                                 <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
@@ -242,10 +250,10 @@
             },
 
             async loadInitialPrices() {
-                // Load prices from server-side data
+                // Load prices from server-side data  
                 {% for symbol in symbols_with_prices %}
                 {% if symbol.price %}
-                this.livePrice['{{ symbol.name }}'] = '${{ symbol.price|floatformat:2 }}';
+                this.livePrice['{{ symbol.name }}'] = this.formatPrice('{{ symbol.name }}', '{{ symbol.price|floatformat:2 }}');
                 {% endif %}
                 {% endfor %}
             },
@@ -303,7 +311,7 @@
                             }
                             
                             const price = parseFloat(data.data.price_str || data.data.price).toFixed(2);
-                            this.livePrice[symbol] = '$' + price;
+                            this.livePrice[symbol] = this.formatPrice(symbol, price);
                             
                             console.log(`Updated ${symbol}: ${price}`);
                         }
@@ -319,6 +327,31 @@
                 getPriceChangeClass(symbol) {
                     // Return CSS classes based on price change
                     return 'bg-gray-100 text-gray-800';
+                },
+
+                formatPrice(symbol, price) {
+                    // Smart currency symbol formatting
+                    if (!price || price === '--' || price === '') return '--';
+                    
+                    const numPrice = parseFloat(price.toString().replace(/[\$₿]/g, ''));
+                    if (isNaN(numPrice)) return '--';
+                    
+                    // USD pairs get $ prefix
+                    if (symbol.endsWith('/USD') || symbol === 'XAUUSD' || symbol === 'IAU' || symbol === 'TSLA') {
+                        return '$' + numPrice.toFixed(2);
+                    }
+                    // BTC pairs get ₿ suffix  
+                    else if (symbol.endsWith('/BTC')) {
+                        return numPrice.toFixed(8) + ' ₿';
+                    }
+                    // Indices like DJI get no currency symbol
+                    else if (symbol === 'DJI') {
+                        return numPrice.toFixed(2);
+                    }
+                    // Default fallback (assume USD for stocks)
+                    else {
+                        return '$' + numPrice.toFixed(2);
+                    }
                 },
 
                 async loadChartData() {

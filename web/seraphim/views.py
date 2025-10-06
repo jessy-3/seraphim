@@ -21,8 +21,25 @@ class DashboardView(View):
         # Start market websocket client for real-time data
         ws_client('start')
         
-        # Get basic market data
-        symbols = SymbolInfo.objects.all()  # Show all symbols for now
+        # Get basic market data with custom ordering
+        symbols = SymbolInfo.objects.all()
+        
+        # Custom ordering: crypto first (market_id=1), then stocks (market_id=2)
+        # Within crypto: BTC/USD, ETH/USD, ETH/BTC, then others alphabetically
+        def symbol_sort_key(symbol):
+            if symbol.market_id == 1:  # Crypto
+                if symbol.name == 'BTC/USD':
+                    return (0, 0)
+                elif symbol.name == 'ETH/USD':
+                    return (0, 1)  
+                elif symbol.name == 'ETH/BTC':
+                    return (0, 2)  # Right after ETH/USD
+                else:
+                    return (0, 10, symbol.name)  # Other cryptos alphabetically
+            else:  # Stocks (market_id=2)
+                return (1, symbol.name)
+        
+        symbols = sorted(symbols, key=symbol_sort_key)
         
         # Initialize Kraken provider for live data
         kraken_live_data = {}
@@ -33,9 +50,12 @@ class DashboardView(View):
             kraken_symbol_map = {
                 'BTC/USD': 'XXBTZUSD',
                 'ETH/USD': 'XETHZUSD', 
-                'ETH/BTC': 'XETHXXBT',
                 'LTC/USD': 'XLTCZUSD',
-                'XRP/USD': 'XXRPZUSD'
+                'XRP/USD': 'XXRPZUSD',
+                'BCH/USD': 'BCHUSD',
+                'LINK/USD': 'LINKUSD',
+                'DOGE/USD': 'XDGUSD',
+                'ETH/BTC': 'XETHXXBT'
             }
             
             # Get live prices from Kraken for mapped symbols
@@ -64,20 +84,19 @@ class DashboardView(View):
         
         # Initialize IBKR provider for stock data  
         ibkr_stock_data = {}
-        # TODO: IBKR integration temporarily disabled due to uvloop event loop conflicts
-        # This will be re-enabled with a background service approach
-        logger.info("IBKR integration temporarily disabled - implementing background service approach")
+        # IBKR Socket integration available but market data requires subscription
+        logger.info("IBKR Socket API available - market data requires IBKR subscription")
         
-        # Count stock symbols from database (non-crypto pairs)
-        stock_symbols_in_db = [s for s in symbols if '/' not in s.name]  # Stocks don't have '/' like BTC/USD
-        logger.info(f"Found {len(stock_symbols_in_db)} stock symbols in database")
+        # Get stock symbols from database (market_id=2 for IBKR stocks)
+        stock_symbols_in_db = [s for s in symbols if s.market_id == 2]
+        logger.info(f"Found {len(stock_symbols_in_db)} IBKR stock symbols in database")
         
-        # For now, create placeholder data to show IBKR integration is ready
+        # Create placeholder data showing IBKR API status  
         for symbol in stock_symbols_in_db:
             ibkr_stock_data[symbol.name] = {
-                'price': 0.0,  # Will be live during market hours  
-                'source': 'IBKR (Market Closed)',
-                'status': 'after_hours'
+                'price': 0.0,  # Requires market data subscription
+                'source': 'IBKR (Subscription Required)',
+                'status': 'subscription_needed'
             }
         
         # Get Redis connection for fallback prices  
@@ -136,7 +155,7 @@ class DashboardView(View):
                 ibkr_data = ibkr_stock_data[symbol.name]
                 symbol_data.update({
                     'price': ibkr_data['price'],
-                    'price_source': 'IBKR Live',
+                    'price_source': ibkr_data['source'],
                     'bid': ibkr_data.get('bid'),
                     'ask': ibkr_data.get('ask'),
                     'timestamp': ibkr_data.get('timestamp')
