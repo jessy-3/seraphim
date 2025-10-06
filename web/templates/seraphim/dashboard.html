@@ -65,6 +65,16 @@
                             </span>
                         </div>
                         {% endif %}
+
+                        <!-- IBKR Integration Status -->
+                        {% if ibkr_integration %}
+                        <div class="flex items-center">
+                            <span class="w-2 h-2 rounded-full mr-2 bg-green-500"></span>
+                            <span class="text-sm text-green-600 dark:text-green-400">
+                                IBKR ({{ ibkr_live_count }} stocks)
+                            </span>
+                        </div>
+                        {% endif %}
                     </div>
                     <button 
                         @click="darkMode = !darkMode"
@@ -110,6 +120,10 @@
                             {% if symbol.price_source == 'Kraken Live' %}
                                 <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
                                     🐙 Kraken Live
+                                </span>
+                            {% elif symbol.price_source == 'IBKR Live' %}
+                                <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+                                    📈 IBKR Live
                                 </span>
                             {% elif symbol.price_source == 'database' or symbol.price_source == 'Historical DB' %}
                                 <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">

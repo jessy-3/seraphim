@@ -11,6 +11,21 @@ services:
     volumes:
       - redis-data:/data
 
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:latest
+    environment:
+      - TWS_USERID=${IBKR_USERNAME}
+      - TWS_PASSWORD=${IBKR_PASSWORD}
+      - TRADING_MODE=paper
+      - READ_ONLY_API=no
+      - TWOFA_TIMEOUT_ACTION=restart
+    ports:
+      - "4002:4002"  # Paper trading port
+      - "4004:4004"  # Gateway status port
+    restart: unless-stopped
+    volumes:
+      - ib_gateway_settings:/opt/ibc/settings
+
   postgres:
     build: ./postgres
     restart: unless-stopped
@@ -40,6 +55,8 @@ services:
     depends_on:
       - redis
       - postgres
+    env_file:
+      - .env
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -96,3 +113,4 @@ volumes:
   redis-data:
   postgres-data:
   vanilla-data:
+  ib_gateway_settings:

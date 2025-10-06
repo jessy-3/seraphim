@@ -55,4 +55,5 @@ cryptography==39.0.2
 
 # NEW: Utilities (to be added gradually)
 python-decouple>=3.8
+ib_insync>=0.9.86
 # aiogram>=3.2  # For simplified Telegram bot later
