@@ -1,5 +1,5 @@
 # Seraphim Trading System - Updated Dockerfile
-FROM python:3.11
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -12,6 +12,18 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     cron \
     netcat-traditional \
+    build-essential \
+    zlib1g-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libfreetype6-dev \
+    liblcms2-dev \
+    libopenjp2-7-dev \
+    libtiff5-dev \
+    tk-dev \
+    tcl-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file
