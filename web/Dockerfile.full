@@ -9,7 +9,6 @@ ENV DJANGO_SETTINGS_MODULE=seraphim.settings
 WORKDIR /app
 
 # Install system dependencies including netcat for healthchecks
-# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
     cron \
     netcat-traditional \
@@ -18,6 +17,13 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libpng-dev \
     libfreetype6-dev \
+    liblcms2-dev \
+    libopenjp2-7-dev \
+    libtiff5-dev \
+    tk-dev \
+    tcl-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file
