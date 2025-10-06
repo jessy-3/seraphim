@@ -48,6 +48,13 @@
                 
                 <!-- Navigation Items -->
                 <div class="flex items-center space-x-4">
+                    <!-- WebSocket Status -->
+                    <div class="flex items-center space-x-2">
+                        <div class="flex items-center">
+                            <span class="w-2 h-2 rounded-full mr-2" :class="wsConnected ? 'bg-green-500' : 'bg-red-500'"></span>
+                            <span class="text-sm text-gray-600 dark:text-gray-300" x-text="wsConnected ? 'Live' : 'Offline'"></span>
+                        </div>
+                    </div>
                     <button 
                         @click="darkMode = !darkMode"
                         class="p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -80,7 +87,7 @@
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ symbol.name }}</p>
-                            <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                            <p class="text-2xl font-bold text-gray-900 dark:text-white" x-text="livePrice['{{ symbol.name }}'] || '${{ symbol.price|floatformat:2 }}' || '--'">
                                 {% if symbol.price %}
                                     ${{ symbol.price|floatformat:2 }}
                                 {% else %}
@@ -213,6 +220,15 @@
                         this.socket.onopen = () => {
                             this.wsConnected = true;
                             console.log('WebSocket connected');
+                            // Subscribe to live price updates
+                            this.socket.send(JSON.stringify({
+                                event: "subscribe",
+                                content: "ticker_price"
+                            }));
+                            this.socket.send(JSON.stringify({
+                                event: "subscribe", 
+                                content: "live_trades"
+                            }));
                         };
                         
                         this.socket.onmessage = (event) => {
@@ -233,9 +249,27 @@
 
                 updateLivePrice(data) {
                     // Update live prices from WebSocket data
+                    console.log('Received WebSocket data:', data);
+                    
                     if (data.channel && data.data) {
-                        const symbol = data.channel.replace('live_', '').replace('_', '/').toUpperCase();
-                        this.livePrice[symbol] = parseFloat(data.data.price).toFixed(2);
+                        // Handle live_trades_btcusd format
+                        if (data.channel.startsWith('live_trades_')) {
+                            const pairCode = data.channel.replace('live_trades_', '').toUpperCase();
+                            // Convert btcusd to BTC/USD
+                            let symbol;
+                            if (pairCode.length === 6) {
+                                symbol = pairCode.substr(0, 3) + '/' + pairCode.substr(3, 3);
+                            } else if (pairCode === 'ETHBTC') {
+                                symbol = 'ETH/BTC';
+                            } else {
+                                symbol = pairCode;
+                            }
+                            
+                            const price = parseFloat(data.data.price_str || data.data.price).toFixed(2);
+                            this.livePrice[symbol] = '$' + price;
+                            
+                            console.log(`Updated ${symbol}: ${price}`);
+                        }
                     }
                 },
 
