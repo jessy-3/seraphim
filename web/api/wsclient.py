@@ -100,6 +100,18 @@ class WebSocketClient(threading.Thread):
 
     def on_open(self, ws):
         print('Opened the connection...')
+        # Auto-subscribe to major trading pairs
+        trading_pairs = [
+            "live_trades_btcusd",
+            "live_trades_ethusd", 
+            "live_trades_ethbtc",
+            "live_trades_ltcusd",
+            "live_trades_xrpusd"
+        ]
+        for pair in trading_pairs:
+            subscribe_msg = eventdata("subscribe", pair)
+            ws.send(json.dumps(subscribe_msg))
+            print(f'Subscribed to: {pair}')
 
     def on_close(self, ws):
         print('Closed the connection...')
@@ -114,16 +126,20 @@ class WebSocketClient(threading.Thread):
 # ws_client handles the market websocket client
 def ws_client(action, chaname = None):
     global wsCli
-    if wsCli is None:
-        wsCli = WebSocketClient("wss://ws.bitstamp.net")
-    if action == 'start' and not (wsCli.is_alive()):
-        wsCli.start()
-    if chaname != None and wsCli.is_alive():
+    if action == 'start':
+        if wsCli is None or not wsCli.is_alive():
+            wsCli = WebSocketClient("wss://ws.bitstamp.net")
+            wsCli.start()
+            logger.info("WebSocketClient started.")
+        else:
+            logger.info("WebSocketClient is already running.")
+    elif chaname != None and wsCli and wsCli.is_alive():
         wsCli.send(eventdata(action, chaname))      ## ws client using full bitstamp channel name now
         # wsCli.send(eventdata(action,"live_trades_"+chaname))
-    if action == 'stop' and wsCli.is_alive():
+    elif action == 'stop' and wsCli:
         wsCli.stop()
         wsCli = None
+        logger.info("WebSocketClient stopped.")
 
 
 if __name__ == "__main__":
