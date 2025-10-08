@@ -452,12 +452,13 @@
                         <span class="text-sm font-medium text-red-700 dark:text-red-300">下轨当值 (EMA Low)</span>
                         <span class="text-sm font-bold text-red-900 dark:text-red-100" x-text="indicators.ema_low_33 || '--'">--</span>
                     </div>
-                    <!-- Last Closing Price -->
-                    <div class="flex justify-between items-center p-3 bg-gray-100 dark:bg-gray-700 rounded-lg border-2 border-gray-300 dark:border-gray-600">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <!-- Last Closing Price with dynamic color based on EMA Channel position -->
+                    <div class="flex justify-between items-center p-3 rounded-lg border-2"
+                         :class="getClosingPriceColor()">
+                        <span class="text-sm font-medium">
                             Last <span x-text="selectedInterval === '3600' ? '1H' : selectedInterval === '14400' ? '4H' : selectedInterval === '86400' ? '1D' : '1W'">1D</span> Closing
                         </span>
-                        <span class="text-lg font-bold text-gray-900 dark:text-white" x-text="lastClosePrice || '--'">--</span>
+                        <span class="text-lg font-bold" x-text="lastClosePrice || '--'">--</span>
                     </div>
                     <div class="text-center py-2 mt-4">
                         <span class="text-xs text-gray-500 dark:text-gray-400" 
@@ -614,6 +615,37 @@
                     // Default fallback (assume USD for stocks)
                     else {
                         return '$' + numPrice.toFixed(2);
+                    }
+                },
+                
+                getClosingPriceColor() {
+                    // Determine color based on position relative to EMA Channel
+                    // Parse numeric values from formatted strings
+                    const parseValue = (val) => {
+                        if (!val || val === '--') return null;
+                        return parseFloat(val.toString().replace(/[\$₿,]/g, ''));
+                    };
+                    
+                    const closePrice = parseValue(this.lastClosePrice);
+                    const emaHigh = parseValue(this.indicators.ema_high_33);
+                    const emaLow = parseValue(this.indicators.ema_low_33);
+                    
+                    // If any value is missing, use default gray
+                    if (closePrice === null || emaHigh === null || emaLow === null) {
+                        return 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300';
+                    }
+                    
+                    // Above EMA High → Blue (matching upper rail)
+                    if (closePrice > emaHigh) {
+                        return 'bg-blue-50 dark:bg-blue-900 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300';
+                    }
+                    // Below EMA Low → Red (matching lower rail)
+                    else if (closePrice < emaLow) {
+                        return 'bg-red-50 dark:bg-red-900 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300';
+                    }
+                    // In between → Gray/Black
+                    else {
+                        return 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white';
                     }
                 },
 

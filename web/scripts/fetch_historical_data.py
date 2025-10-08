@@ -42,6 +42,11 @@ KRAKEN_PAIRS = {
     'ETH/USD': 'XETHZUSD',
     'SOL/USD': 'SOLUSD',
     'DOGE/USD': 'XDGUSD',
+    'BCH/USD': 'BCHUSD',
+    'LTC/USD': 'XLTCZUSD',
+    'XRP/USD': 'XXRPZUSD',
+    'LINK/USD': 'LINKUSD',
+    'ETH/BTC': 'XETHXXBT',
 }
 
 def fetch_ohlc_for_symbol(provider, symbol, display_name, interval_name, limit=200):
@@ -158,6 +163,46 @@ def ensure_symbol_info():
             'url_symbol': 'dogeusd',
             'base_decimals': 8,
             'counter_decimals': 4,
+            'market_id': 2,  # Kraken
+            'trading': 'Enabled'
+        },
+        'BCH/USD': {
+            'description': 'Bitcoin Cash / US Dollar',
+            'url_symbol': 'bchusd',
+            'base_decimals': 8,
+            'counter_decimals': 2,
+            'market_id': 2,  # Kraken
+            'trading': 'Enabled'
+        },
+        'LTC/USD': {
+            'description': 'Litecoin / US Dollar',
+            'url_symbol': 'ltcusd',
+            'base_decimals': 8,
+            'counter_decimals': 2,
+            'market_id': 2,  # Kraken
+            'trading': 'Enabled'
+        },
+        'XRP/USD': {
+            'description': 'Ripple / US Dollar',
+            'url_symbol': 'xrpusd',
+            'base_decimals': 8,
+            'counter_decimals': 4,
+            'market_id': 2,  # Kraken
+            'trading': 'Enabled'
+        },
+        'LINK/USD': {
+            'description': 'Chainlink / US Dollar',
+            'url_symbol': 'linkusd',
+            'base_decimals': 8,
+            'counter_decimals': 2,
+            'market_id': 2,  # Kraken
+            'trading': 'Enabled'
+        },
+        'ETH/BTC': {
+            'description': 'Ethereum / Bitcoin',
+            'url_symbol': 'ethbtc',
+            'base_decimals': 8,
+            'counter_decimals': 8,
             'market_id': 2,  # Kraken
             'trading': 'Enabled'
         },

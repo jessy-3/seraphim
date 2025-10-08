@@ -129,17 +129,45 @@ def calculate_ema_channel_for_symbol(symbol='BTC/USD', interval=86400, limit=100
               f"下轨: {ind.ema_low_33:.2f}")
 
 def main():
-    """主函数"""
-    symbols = ['BTC/USD', 'ETH/USD']  # 可以扩展更多符号
-    interval = 86400  # 1天
+    """主函数 - 为所有品种和时间周期计算EMA Channel"""
+    symbols = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'DOGE/USD', 
+               'BCH/USD', 'LTC/USD', 'XRP/USD', 'LINK/USD', 'ETH/BTC']
+    intervals = {
+        '1H': 3600,
+        '4H': 14400,
+        '1D': 86400,
+        '1W': 604800
+    }
+    
+    print("="*70)
+    print("🧮 EMA Channel (轨道当值) 批量计算")
+    print("="*70)
+    print(f"品种: {', '.join(symbols)}")
+    print(f"周期: {', '.join(intervals.keys())}")
+    print("="*70)
+    
+    total_success = 0
+    total_failed = 0
     
     for symbol in symbols:
-        try:
-            calculate_ema_channel_for_symbol(symbol, interval)
-            print()
-        except Exception as e:
-            print(f"❌ 计算 {symbol} 时出错: {e}")
-            continue
+        for interval_name, interval_seconds in intervals.items():
+            try:
+                print(f"\n📊 {symbol} @ {interval_name}")
+                calculate_ema_channel_for_symbol(symbol, interval_seconds)
+                total_success += 1
+            except Exception as e:
+                print(f"❌ 计算 {symbol} @ {interval_name} 时出错: {e}")
+                total_failed += 1
+                import traceback
+                traceback.print_exc()
+                continue
+    
+    print("\n" + "="*70)
+    print("📊 汇总")
+    print("="*70)
+    print(f"✅ 成功: {total_success}")
+    print(f"❌ 失败: {total_failed}")
+    print("="*70)
 
 if __name__ == "__main__":
     main()
