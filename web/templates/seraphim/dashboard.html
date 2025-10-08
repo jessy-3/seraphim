@@ -502,6 +502,8 @@
                 priceChart: null,
                 volumeChart: null,
                 socket: null,
+                // Symbol configuration (counter_decimals for price formatting)
+                symbolsConfig: {{ symbols_config }},
 
             init() {
                 this.initWebSocket();
@@ -576,7 +578,7 @@
                                 symbol = pairCode;
                             }
                             
-                            const price = parseFloat(data.data.price_str || data.data.price).toFixed(2);
+                            const price = parseFloat(data.data.price_str || data.data.price);
                             this.livePrice[symbol] = this.formatPrice(symbol, price);
                         }
                     }
@@ -594,27 +596,31 @@
                 },
 
                 formatPrice(symbol, price) {
-                    // Smart currency symbol formatting
+                    // Smart currency symbol formatting with dynamic decimals
                     if (!price || price === '--' || price === '') return '--';
                     
                     const numPrice = parseFloat(price.toString().replace(/[\$₿]/g, ''));
                     if (isNaN(numPrice)) return '--';
                     
+                    // Get counter_decimals from config, default to 2
+                    const config = this.symbolsConfig[symbol] || {};
+                    const decimals = config.counter_decimals !== undefined ? config.counter_decimals : 2;
+                    
                     // USD pairs get $ prefix
                     if (symbol.endsWith('/USD') || symbol === 'XAUUSD' || symbol === 'IAU' || symbol === 'TSLA') {
-                        return '$' + numPrice.toFixed(2);
+                        return '$' + numPrice.toFixed(decimals);
                     }
                     // BTC pairs get ₿ suffix  
                     else if (symbol.endsWith('/BTC')) {
-                        return numPrice.toFixed(8) + ' ₿';
+                        return numPrice.toFixed(decimals) + ' ₿';
                     }
                     // Indices like DJI get no currency symbol
                     else if (symbol === 'DJI') {
-                        return numPrice.toFixed(2);
+                        return numPrice.toFixed(decimals);
                     }
                     // Default fallback (assume USD for stocks)
                     else {
-                        return '$' + numPrice.toFixed(2);
+                        return '$' + numPrice.toFixed(decimals);
                     }
                 },
                 
@@ -654,25 +660,40 @@
                         const response = await fetch(`/api/market-data/?symbol=${this.selectedSymbol}&interval=${this.selectedInterval}`);
                         const data = await response.json();
 
-                        // Update indicators panel
+                        // Update indicators panel with dynamic decimals
                         if (data.indicators && data.indicators.length > 0) {
                             const latest = data.indicators[0];
+                            const config = this.symbolsConfig[this.selectedSymbol] || {};
+                            const decimals = config.counter_decimals !== undefined ? config.counter_decimals : 2;
+                            
+                            // Format with currency prefix based on symbol type
+                            const formatIndicator = (value) => {
+                                if (value === null || value === undefined) return '--';
+                                if (this.selectedSymbol.endsWith('/USD')) {
+                                    return '$' + Number(value).toFixed(decimals);
+                                } else if (this.selectedSymbol.endsWith('/BTC')) {
+                                    return Number(value).toFixed(decimals) + ' ₿';
+                                } else {
+                                    return Number(value).toFixed(decimals);
+                                }
+                            };
+                            
                             this.indicators = {
                                 rsi: (latest.rsi !== null && latest.rsi !== undefined) ? Number(latest.rsi).toFixed(2) : '--',
                                 macd: (latest.macd !== null && latest.macd !== undefined) ? Number(latest.macd).toFixed(4) : '--',
-                                sma_20: (latest.sma_20 !== null && latest.sma_20 !== undefined) ? '$' + Number(latest.sma_20).toFixed(2) : '--',
-                                ema_12: (latest.ema_12 !== null && latest.ema_12 !== undefined) ? '$' + Number(latest.ema_12).toFixed(2) : '--',
-                                ema_high_33: (latest.ema_high_33 !== null && latest.ema_high_33 !== undefined) ? '$' + Number(latest.ema_high_33).toFixed(2) : '--',
-                                ema_low_33: (latest.ema_low_33 !== null && latest.ema_low_33 !== undefined) ? '$' + Number(latest.ema_low_33).toFixed(2) : '--'
+                                sma_20: formatIndicator(latest.sma_20),
+                                ema_12: formatIndicator(latest.ema_12),
+                                ema_high_33: formatIndicator(latest.ema_high_33),
+                                ema_low_33: formatIndicator(latest.ema_low_33)
                             };
                         } else {
                             this.indicators = { rsi: '--', macd: '--', sma_20: '--', ema_12: '--', ema_high_33: '--', ema_low_33: '--' };
                         }
                         
-                        // Update last closing price
+                        // Update last closing price with dynamic decimals
                         if (data.ohlc && data.ohlc.length > 0) {
                             const latestOhlc = data.ohlc[0]; // API returns newest first
-                            this.lastClosePrice = '$' + Number(latestOhlc.close).toFixed(2);
+                            this.lastClosePrice = this.formatPrice(this.selectedSymbol, latestOhlc.close);
                         } else {
                             this.lastClosePrice = '--';
                         }

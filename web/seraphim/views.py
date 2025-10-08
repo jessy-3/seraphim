@@ -2,6 +2,7 @@ from django.shortcuts import render
 from django.views import View
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
+from django.utils.safestring import mark_safe
 from api.wsclient import ws_client
 from api.models import SymbolInfo, OhlcPrice, Indicator
 from api.providers.kraken_provider import get_kraken_provider
@@ -51,6 +52,7 @@ class DashboardView(View):
             kraken_symbol_map = {
                 'BTC/USD': 'XXBTZUSD',
                 'ETH/USD': 'XETHZUSD', 
+                'SOL/USD': 'SOLUSD',
                 'LTC/USD': 'XLTCZUSD',
                 'XRP/USD': 'XXRPZUSD',
                 'BCH/USD': 'BCHUSD',
@@ -179,9 +181,18 @@ class DashboardView(View):
             
             symbols_with_prices.append(symbol_data)
 
+        # Create symbol config for frontend (counter_decimals for price formatting)
+        symbols_config = {}
+        for symbol in symbols:
+            symbols_config[symbol.name] = {
+                'counter_decimals': symbol.counter_decimals,
+                'base_decimals': symbol.base_decimals
+            }
+        
         context = {
             'symbols': symbols,
             'symbols_with_prices': symbols_with_prices,
+            'symbols_config': mark_safe(json.dumps(symbols_config)),  # Serialize to JSON for frontend
             'live_prices': live_prices,
             'kraken_integration': True,
             'kraken_live_count': len(kraken_live_data),
