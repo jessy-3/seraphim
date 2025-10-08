@@ -50,6 +50,17 @@ def calculate_indicators_for_symbol(symbol, interval=86400, limit=100):
     interval_name = {3600: '1H', 14400: '4H', 86400: '1D', 604800: '1W'}.get(interval, f'{interval}s')
     print(f"📊 Calculating indicators for {symbol} @ {interval_name}...")
     
+    # Get counter_decimals for proper precision
+    from api.models import SymbolInfo
+    try:
+        symbol_info = SymbolInfo.objects.get(name=symbol)
+        # Use counter_decimals for price-based indicators, minimum 4 for better precision
+        price_decimals = max(symbol_info.counter_decimals, 4)
+        print(f"  💎 Using {price_decimals} decimal places (counter_decimals={symbol_info.counter_decimals})")
+    except SymbolInfo.DoesNotExist:
+        price_decimals = 8  # Default to high precision if symbol not found
+        print(f"  ⚠️  Symbol not found in SymbolInfo, using default {price_decimals} decimals")
+    
     # Get OHLC data for specific interval
     ohlc_data = OhlcPrice.objects.filter(
         symbol=symbol,
@@ -118,11 +129,11 @@ def calculate_indicators_for_symbol(symbol, interval=86400, limit=100):
             unix=unix_dt,  # UnixDateTimeField expects datetime object
             timestamp=row['date'],
             interval=interval,
-            ma_20=round(float(row['sma_20']), 2) if not pd.isna(row['sma_20']) else None,
-            ema=round(float(row['ema_12']), 2) if not pd.isna(row['ema_12']) else None,
-            upper_ema=round(float(row['ema_26']), 2) if not pd.isna(row['ema_26']) else None,
-            macd=round(float(row['macd']), 4) if not pd.isna(row['macd']) else None,
-            rsi=round(float(row['rsi']), 2) if not pd.isna(row['rsi']) else None,
+            ma_20=round(float(row['sma_20']), price_decimals) if not pd.isna(row['sma_20']) else None,
+            ema=round(float(row['ema_12']), price_decimals) if not pd.isna(row['ema_12']) else None,
+            upper_ema=round(float(row['ema_26']), price_decimals) if not pd.isna(row['ema_26']) else None,
+            macd=round(float(row['macd']), price_decimals + 2) if not pd.isna(row['macd']) else None,  # MACD needs more precision
+            rsi=round(float(row['rsi']), 2) if not pd.isna(row['rsi']) else None,  # RSI is always 0-100, 2 decimals is fine
         )
         indicators_to_create.append(indicator)
     
