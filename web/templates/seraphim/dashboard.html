@@ -34,6 +34,196 @@
         const wsScheme = window.location.protocol == "https:" ? "wss" : "ws";
         const wsPath = wsScheme + '://' + window.location.host + '/ws/ticks/';
     </script>
+    
+    <!-- Chart update with destroy+rebuild strategy -->
+    <script>
+        // Global chart references
+        window.priceChart = null;
+        window.volumeChart = null;
+        
+        // Update function that Alpine.js can call
+        window.updatePriceChart = function(symbol, interval) {
+            fetch(`/api/market-data/?symbol=${symbol}&interval=${interval}`)
+                .then(r => r.json())
+                .then(data => {
+                    // Destroy existing charts
+                    if (window.priceChart) {
+                        window.priceChart.destroy();
+                    }
+                    if (window.volumeChart) {
+                        window.volumeChart.destroy();
+                    }
+                    
+                    // Prepare candlestick data
+                    const candleData = data.ohlc.map(item => ({
+                        x: new Date(item.timestamp).getTime(),
+                        o: parseFloat(item.open),
+                        h: parseFloat(item.high),
+                        l: parseFloat(item.low),
+                        c: parseFloat(item.close)
+                    })).reverse(); // Oldest to newest
+                    
+                    // Prepare EMA Channel data
+                    const emaHighData = data.indicators.map(ind => ({
+                        x: new Date(ind.unix * 1000).getTime(),
+                        y: ind.ema_high_33 ? parseFloat(ind.ema_high_33) : null
+                    })).reverse();
+                    
+                    const emaLowData = data.indicators.map(ind => ({
+                        x: new Date(ind.unix * 1000).getTime(),
+                        y: ind.ema_low_33 ? parseFloat(ind.ema_low_33) : null
+                    })).reverse();
+                    
+                    // Determine time unit
+                    const timeUnit = interval === '3600' ? 'hour' : interval === '14400' ? 'hour' : 'day';
+                    
+                    // Create price chart with candlesticks and EMA Channel
+                    const priceCtx = document.getElementById('priceChart').getContext('2d');
+                    window.priceChart = new Chart(priceCtx, {
+                        type: 'candlestick',
+                        data: {
+                            datasets: [{
+                                label: symbol,
+                                data: candleData,
+                                color: {
+                                    up: '#10b981',
+                                    down: '#ef4444',
+                                    unchanged: '#6b7280'
+                                },
+                                borderColor: {
+                                    up: '#059669',
+                                    down: '#dc2626',
+                                    unchanged: '#4b5563'
+                                }
+                            }, {
+                                label: '上轨当值 (EMA High 33)',
+                                type: 'line',
+                                data: emaHighData,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                fill: false
+                            }, {
+                                label: '下轨当值 (EMA Low 33)',
+                                type: 'line',
+                                data: emaLowData,
+                                borderColor: '#ef4444',
+                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                fill: '-1' // Fill between this line and previous
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: false,
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            if (context.dataset.type === 'candlestick') {
+                                                const data = context.parsed;
+                                                return [
+                                                    `Open: $${data.o?.toFixed(2) || 'N/A'}`,
+                                                    `High: $${data.h?.toFixed(2) || 'N/A'}`,
+                                                    `Low: $${data.l?.toFixed(2) || 'N/A'}`,
+                                                    `Close: $${data.c?.toFixed(2) || 'N/A'}`
+                                                ];
+                                            } else {
+                                                return `${context.dataset.label}: $${context.parsed.y?.toFixed(2) || 'N/A'}`;
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: timeUnit,
+                                        displayFormats: {
+                                            hour: 'MMM dd HH:mm',
+                                            day: 'MMM dd'
+                                        }
+                                    },
+                                    grid: {
+                                        color: 'rgba(156, 163, 175, 0.2)'
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: false,
+                                    grid: {
+                                        color: 'rgba(156, 163, 175, 0.2)'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            return '$' + value.toFixed(2);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Create volume chart
+                    const volumeData = data.ohlc.map(item => ({
+                        x: new Date(item.timestamp).getTime(),
+                        y: parseFloat(item.volume || 0)
+                    })).reverse();
+                    
+                    const volumeCtx = document.getElementById('volumeChart').getContext('2d');
+                    window.volumeChart = new Chart(volumeCtx, {
+                        type: 'bar',
+                        data: {
+                            datasets: [{
+                                label: 'Volume',
+                                data: volumeData,
+                                backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                                borderWidth: 0
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: timeUnit
+                                    },
+                                    grid: {
+                                        display: false
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    grid: {
+                                        color: 'rgba(156, 163, 175, 0.2)'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                })
+                .catch(err => console.error('Chart update error:', err));
+        };
+    </script>
 </head>
 
 <body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-300" x-data="tradingDashboard()">
@@ -176,17 +366,43 @@
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Price Chart</h3>
                     <div class="flex items-center space-x-4">
-                        <!-- Time Interval Selector -->
+                        <!-- Time Interval Selector - Button Group Style -->
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-gray-600 dark:text-gray-300">Timeframe:</label>
-                            <select x-model="selectedInterval" @change="loadChartData()" 
-                                    class="rounded-md border-gray-300 text-sm focus:border-primary focus:ring-primary">
-                                <option value="3600">1H</option>
-                                <option value="86400" selected>1D</option>
-                                <!-- Temporarily disabled until data is available -->
-                                <!-- <option value="14400">4H</option> -->
-                                <!-- <option value="604800">1W</option> -->
-                            </select>
+                            <label class="text-sm text-gray-600 dark:text-gray-300">Interval:</label>
+                            <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
+                                <button 
+                                    @click="selectedInterval = '3600'; loadChartData()"
+                                    :class="selectedInterval === '3600' ? 
+                                        'bg-primary text-white' : 
+                                        'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                                    class="px-3 py-1 text-sm font-medium border-r border-gray-200 dark:border-gray-600 last:border-r-0">
+                                    1H
+                                </button>
+                                <button 
+                                    @click="selectedInterval = '14400'; loadChartData()"
+                                    :class="selectedInterval === '14400' ? 
+                                        'bg-primary text-white' : 
+                                        'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                                    class="px-3 py-1 text-sm font-medium border-r border-gray-200 dark:border-gray-600 last:border-r-0">
+                                    4H
+                                </button>
+                                <button 
+                                    @click="selectedInterval = '86400'; loadChartData()"
+                                    :class="selectedInterval === '86400' ? 
+                                        'bg-primary text-white' : 
+                                        'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                                    class="px-3 py-1 text-sm font-medium border-r border-gray-200 dark:border-gray-600 last:border-r-0">
+                                    1D
+                                </button>
+                                <button 
+                                    @click="selectedInterval = '604800'; loadChartData()"
+                                    :class="selectedInterval === '604800' ? 
+                                        'bg-primary text-white' : 
+                                        'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                                    class="px-3 py-1 text-sm font-medium">
+                                    1W
+                                </button>
+                            </div>
                         </div>
                         <!-- Symbol Selector -->
                         <select x-model="selectedSymbol" @change="loadChartData()" 
@@ -197,8 +413,13 @@
                         </select>
                     </div>
                 </div>
-                <div class="h-64">
+                <!-- Main Price Chart -->
+                <div class="h-64 mb-4">
                     <canvas id="priceChart"></canvas>
+                </div>
+                <!-- Volume Subplot -->
+                <div class="h-24 border-t border-gray-200 dark:border-gray-600 pt-2">
+                    <canvas id="volumeChart"></canvas>
                 </div>
             </div>
 
@@ -208,22 +429,34 @@
                 <div class="space-y-4">
                     <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-300">RSI (14)</span>
-                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.rsi || '77.0'">77.0</span>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.rsi || '--'">--</span>
                     </div>
                     <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-300">MACD</span>
-                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.macd || '2483.48'">2483.48</span>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.macd || '--'">--</span>
                     </div>
                     <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-300">SMA (20)</span>
-                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.sma_20 || '116019.50'">$116,019.50</span>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.sma_20 || '--'">--</span>
                     </div>
                     <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-300">EMA (12)</span>
-                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.ema_12 || '119111.17'">$119,111.17</span>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="indicators.ema_12 || '--'">--</span>
+                    </div>
+                    <!-- 轨道当值指标 -->
+                    <div class="flex justify-between items-center p-3 bg-blue-50 dark:bg-blue-900 rounded-lg border border-blue-200 dark:border-blue-700">
+                        <span class="text-sm font-medium text-blue-700 dark:text-blue-300">上轨当值 (EMA High)</span>
+                        <span class="text-sm font-bold text-blue-900 dark:text-blue-100" x-text="indicators.ema_high_33 || '--'">--</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-red-50 dark:bg-red-900 rounded-lg border border-red-200 dark:border-red-700">
+                        <span class="text-sm font-medium text-red-700 dark:text-red-300">下轨当值 (EMA Low)</span>
+                        <span class="text-sm font-bold text-red-900 dark:text-red-100" x-text="indicators.ema_low_33 || '--'">--</span>
                     </div>
                     <div class="text-center py-2 mt-4">
-                        <span class="text-xs text-gray-500 dark:text-gray-400">Based on latest BTC/USD historical data</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400" 
+                              x-text="`Based on latest ${selectedSymbol} ${selectedInterval === '3600' ? '1H' : selectedInterval === '14400' ? '4H' : selectedInterval === '86400' ? '1D' : '1W'} data`">
+                            Based on latest data
+                        </span>
                     </div>
                 </div>
             </div>
@@ -258,12 +491,13 @@
                 indicators: {},
                 wsConnected: false,
                 priceChart: null,
+                volumeChart: null,
                 socket: null,
 
             init() {
                 this.initWebSocket();
-                this.initChart();
-                this.loadChartData();
+                // V8: Chart initialization is in standalone script, but we trigger data load
+                this.loadChartData();  // Load initial chart and indicators
                 this.loadInitialPrices();
             },
 
@@ -282,7 +516,6 @@
                         
                         this.socket.onopen = () => {
                             this.wsConnected = true;
-                            console.log('WebSocket connected');
                             // Subscribe to live price updates
                             this.socket.send(JSON.stringify({
                                 event: "subscribe",
@@ -295,13 +528,21 @@
                         };
                         
                         this.socket.onmessage = (event) => {
-                            const data = JSON.parse(event.data);
-                            this.updateLivePrice(data);
+                            try {
+                                // Check if data is JSON before parsing
+                                if (typeof event.data !== 'string' || (!event.data.startsWith('{') && !event.data.startsWith('['))) {
+                                    return;
+                                }
+                                
+                                const data = JSON.parse(event.data);
+                                this.updateLivePrice(data);
+                            } catch (error) {
+                                console.error('WebSocket error:', error);
+                            }
                         };
                         
                         this.socket.onclose = () => {
                             this.wsConnected = false;
-                            console.log('WebSocket disconnected');
                             // Reconnect after 5 seconds
                             setTimeout(() => this.initWebSocket(), 5000);
                         };
@@ -312,8 +553,6 @@
 
                 updateLivePrice(data) {
                     // Update live prices from WebSocket data
-                    console.log('Received WebSocket data:', data);
-                    
                     if (data.channel && data.data) {
                         // Handle live_trades_btcusd format
                         if (data.channel.startsWith('live_trades_')) {
@@ -330,8 +569,6 @@
                             
                             const price = parseFloat(data.data.price_str || data.data.price).toFixed(2);
                             this.livePrice[symbol] = this.formatPrice(symbol, price);
-                            
-                            console.log(`Updated ${symbol}: ${price}`);
                         }
                     }
                 },
@@ -376,124 +613,28 @@
                     try {
                         const response = await fetch(`/api/market-data/?symbol=${this.selectedSymbol}&interval=${this.selectedInterval}`);
                         const data = await response.json();
-                        this.updateChart(data);
-                        
+
+                        // Update indicators panel
                         if (data.indicators && data.indicators.length > 0) {
                             const latest = data.indicators[0];
                             this.indicators = {
-                                rsi: latest.rsi ? latest.rsi.toFixed(2) : '--',
-                                macd: latest.macd ? latest.macd.toFixed(4) : '--',
-                                sma_20: latest.sma_20 ? latest.sma_20.toFixed(2) : '--',
-                                ema_12: latest.ema_12 ? latest.ema_12.toFixed(2) : '--'
+                                rsi: (latest.rsi !== null && latest.rsi !== undefined) ? Number(latest.rsi).toFixed(2) : '--',
+                                macd: (latest.macd !== null && latest.macd !== undefined) ? Number(latest.macd).toFixed(4) : '--',
+                                sma_20: (latest.sma_20 !== null && latest.sma_20 !== undefined) ? '$' + Number(latest.sma_20).toFixed(2) : '--',
+                                ema_12: (latest.ema_12 !== null && latest.ema_12 !== undefined) ? '$' + Number(latest.ema_12).toFixed(2) : '--',
+                                ema_high_33: (latest.ema_high_33 !== null && latest.ema_high_33 !== undefined) ? '$' + Number(latest.ema_high_33).toFixed(2) : '--',
+                                ema_low_33: (latest.ema_low_33 !== null && latest.ema_low_33 !== undefined) ? '$' + Number(latest.ema_low_33).toFixed(2) : '--'
                             };
+                        } else {
+                            this.indicators = { rsi: '--', macd: '--', sma_20: '--', ema_12: '--', ema_high_33: '--', ema_low_33: '--' };
+                        }
+
+                        // Update chart
+                        if (typeof window.updatePriceChart === 'function') {
+                            window.updatePriceChart(this.selectedSymbol, this.selectedInterval);
                         }
                     } catch (error) {
                         console.error('Error loading chart data:', error);
-                    }
-                },
-
-                initChart() {
-                    const ctx = document.getElementById('priceChart').getContext('2d');
-                    this.priceChart = new Chart(ctx, {
-                        type: 'candlestick',
-                        data: {
-                            datasets: [{
-                                label: 'Price',
-                                data: [],
-                                borderColor: 'rgb(59, 130, 246)',
-                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                                color: {
-                                    up: '#10b981',    // Green for bullish candles
-                                    down: '#ef4444',  // Red for bearish candles
-                                    unchanged: '#6b7280' // Gray for unchanged
-                                },
-                                borderColor: {
-                                    up: '#059669',
-                                    down: '#dc2626',
-                                    unchanged: '#4b5563'
-                                }
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            interaction: {
-                                intersect: false,
-                                mode: 'index',
-                            },
-                            plugins: {
-                                legend: {
-                                    display: false
-                                },
-                                tooltip: {
-                                    filter: function(tooltipItem) {
-                                        return tooltipItem.datasetIndex === 0;
-                                    },
-                                    callbacks: {
-                                        title: function(context) {
-                                            return new Date(context[0].parsed.x).toLocaleDateString();
-                                        },
-                                        label: function(context) {
-                                            const data = context.parsed;
-                                            return [
-                                                `Open: $${data.o?.toFixed(2) || 'N/A'}`,
-                                                `High: $${data.h?.toFixed(2) || 'N/A'}`,
-                                                `Low: $${data.l?.toFixed(2) || 'N/A'}`,
-                                                `Close: $${data.c?.toFixed(2) || 'N/A'}`
-                                            ];
-                                        }
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    type: 'time',
-                                    time: {
-                                        unit: 'day',
-                                        displayFormats: {
-                                            day: 'MMM dd',
-                                            hour: 'HH:mm'
-                                        }
-                                    },
-                                    grid: {
-                                        color: 'rgba(156, 163, 175, 0.2)'
-                                    }
-                                },
-                                y: {
-                                    beginAtZero: false,
-                                    grid: {
-                                        color: 'rgba(156, 163, 175, 0.2)'
-                                    },
-                                    ticks: {
-                                        callback: function(value) {
-                                            return '$' + value.toFixed(2);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                },
-
-                updateChart(data) {
-                    if (this.priceChart && data.ohlc) {
-                        // Convert OHLC data to candlestick format
-                        const candleData = data.ohlc.map(item => ({
-                            x: new Date(item.timestamp).getTime(),
-                            o: parseFloat(item.open),   // Open
-                            h: parseFloat(item.high),   // High  
-                            l: parseFloat(item.low),    // Low
-                            c: parseFloat(item.close)   // Close
-                        })).reverse(); // Reverse to show oldest to newest
-                        
-                        this.priceChart.data.datasets[0].data = candleData;
-                        this.priceChart.data.datasets[0].label = this.selectedSymbol;
-                        
-                        // Update time scale based on selected interval
-                        const timeUnit = this.selectedInterval === '3600' ? 'hour' : 'day';
-                        this.priceChart.options.scales.x.time.unit = timeUnit;
-                        
-                        this.priceChart.update();
                     }
                 }
             }

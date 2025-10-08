@@ -19,7 +19,6 @@ urlpatterns = [
     
     # Main application routes
     path('', views.DashboardView.as_view(), name='dashboard'),
-    path('simple/', views.SimpleDashboardView.as_view(), name='simple-dashboard'),
     path('api/market-data/', views.MarketDataView.as_view(), name='market-data'),
     path('api/', include('api.urls')),
     path('trading/', include('trading.urls')),

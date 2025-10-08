@@ -87,17 +87,32 @@ def calculate_indicators_for_symbol(symbol, limit=100):
     
     print(f"  📈 Generated {len(df)} indicator records")
     
-    # Clear existing indicators for this symbol
-    Indicator.objects.filter(symbol=symbol).delete()
+    # Clear existing indicators for this symbol and interval
+    Indicator.objects.filter(symbol=symbol, interval=86400).delete()
     
     # Save indicators to database (limit to recent data to avoid too much data)
     indicators_to_create = []
     recent_df = df.tail(limit)  # Only keep recent data
     
     for _, row in recent_df.iterrows():
+        timestamp = row['date']
+        # Handle different timestamp types
+        if isinstance(timestamp, (int, float)):
+            unix_timestamp = int(timestamp)
+        elif hasattr(timestamp, 'timestamp'):
+            unix_timestamp = int(timestamp.timestamp())
+        elif hasattr(timestamp, 'to_pydatetime'):
+            unix_timestamp = int(timestamp.to_pydatetime().timestamp())
+        else:
+            # Fallback: try to convert to datetime then to timestamp
+            dt = pd.to_datetime(timestamp)
+            unix_timestamp = int(dt.timestamp())
+        
         indicator = Indicator(
             symbol=symbol,
+            unix=unix_timestamp,
             timestamp=row['date'],
+            interval=86400,  # Daily data (86400 seconds = 1 day)
             ma_20=round(float(row['sma_20']), 2) if not pd.isna(row['sma_20']) else None,
             ema=round(float(row['ema_12']), 2) if not pd.isna(row['ema_12']) else None,
             upper_ema=round(float(row['ema_26']), 2) if not pd.isna(row['ema_26']) else None,

@@ -96,6 +96,9 @@ class Indicator(models.Model):
     kdj_k = models.DecimalField(max_digits=18, decimal_places=8, null=True)
     kdj_d = models.DecimalField(max_digits=18, decimal_places=8, null=True)
     kdj_j = models.DecimalField(max_digits=18, decimal_places=8, null=True)
+    # EMA Channel (轨道当值) indicators
+    ema_high_33 = models.DecimalField(max_digits=18, decimal_places=8, null=True)  # 上轨当值 (EMA of High prices, 33 periods)
+    ema_low_33 = models.DecimalField(max_digits=18, decimal_places=8, null=True)   # 下轨当值 (EMA of Low prices, 33 periods)
 
     class Meta:
         db_table = 'qt_indicator'

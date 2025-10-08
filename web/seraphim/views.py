@@ -194,34 +194,6 @@ class DashboardView(View):
         return render(request, 'seraphim/dashboard.html', context)
 
 
-class SimpleDashboardView(View):
-    """Simple dashboard for testing price display"""
-    
-    def get(self, request):
-        # Get basic market data
-        symbols = SymbolInfo.objects.all()
-        
-        # Get prices with database fallback
-        symbols_with_prices = []
-        for symbol in symbols:
-            latest_price = OhlcPrice.objects.filter(symbol=symbol.name).order_by('-date').first()
-            symbol_data = {
-                'name': symbol.name,
-                'description': symbol.description,
-                'price': float(latest_price.close) if latest_price and latest_price.close else None,
-                'price_source': 'database' if latest_price else 'none'
-            }
-            symbols_with_prices.append(symbol_data)
-
-        context = {
-            'symbols': symbols,
-            'symbols_with_prices': symbols_with_prices,
-            'app_name': 'Seraphim Trading System',
-        }
-        
-        return render(request, 'seraphim/simple_dashboard.html', context)
-
-
 class MarketDataView(View):
     """API view for market data"""
     
@@ -238,7 +210,8 @@ class MarketDataView(View):
         # Get indicators for the specific interval (if available)
         # Note: Current Indicator model doesn't have interval field, using all for now
         indicators = Indicator.objects.filter(
-            symbol=symbol
+            symbol=symbol,
+            interval=interval_seconds
         ).order_by('-timestamp')[:100]
         
         # Add debug info
@@ -263,6 +236,9 @@ class MarketDataView(View):
                     'ema_26': float(item.upper_ema) if item.upper_ema else None,
                     'macd': float(item.macd) if item.macd else None,
                     'rsi': float(item.rsi) if item.rsi else None,
+                    # EMA Channel (轨道当值) indicators
+                    'ema_high_33': float(item.ema_high_33) if item.ema_high_33 else None,  # 上轨当值
+                    'ema_low_33': float(item.ema_low_33) if item.ema_low_33 else None,    # 下轨当值
                 } for item in indicators
             ]
         }

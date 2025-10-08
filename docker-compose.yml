@@ -20,7 +20,7 @@ services:
       - READ_ONLY_API=no
       - TWOFA_TIMEOUT_ACTION=restart
     ports:
-      - "4002:4002"  # Paper trading port
+      - "4002:4002"  # Live trading port
       - "4004:4004"  # Gateway status port
     restart: unless-stopped
     volumes:
