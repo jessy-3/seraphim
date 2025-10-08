@@ -7,7 +7,7 @@ import sys
 import django
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add project root to Python path
 sys.path.append('/app')
@@ -44,14 +44,16 @@ def calculate_macd(data, fast=12, slow=26, signal=9):
     histogram = macd_line - signal_line
     return macd_line, signal_line, histogram
 
-def calculate_indicators_for_symbol(symbol, limit=100):
-    """Calculate indicators for a specific symbol"""
+def calculate_indicators_for_symbol(symbol, interval=86400, limit=100):
+    """Calculate indicators for a specific symbol and interval"""
     
-    print(f"📊 Calculating indicators for {symbol}...")
+    interval_name = {3600: '1H', 14400: '4H', 86400: '1D', 604800: '1W'}.get(interval, f'{interval}s')
+    print(f"📊 Calculating indicators for {symbol} @ {interval_name}...")
     
-    # Get OHLC data
+    # Get OHLC data for specific interval
     ohlc_data = OhlcPrice.objects.filter(
-        symbol=symbol
+        symbol=symbol,
+        interval=interval
     ).order_by('date').values('date', 'open', 'high', 'low', 'close', 'volume')
     
     if not ohlc_data:
@@ -88,7 +90,7 @@ def calculate_indicators_for_symbol(symbol, limit=100):
     print(f"  📈 Generated {len(df)} indicator records")
     
     # Clear existing indicators for this symbol and interval
-    Indicator.objects.filter(symbol=symbol, interval=86400).delete()
+    Indicator.objects.filter(symbol=symbol, interval=interval).delete()
     
     # Save indicators to database (limit to recent data to avoid too much data)
     indicators_to_create = []
@@ -108,11 +110,14 @@ def calculate_indicators_for_symbol(symbol, limit=100):
             dt = pd.to_datetime(timestamp)
             unix_timestamp = int(dt.timestamp())
         
+        # Convert timestamp to datetime for UnixDateTimeField
+        unix_dt = datetime.fromtimestamp(unix_timestamp, tz=timezone.utc)
+        
         indicator = Indicator(
             symbol=symbol,
-            unix=unix_timestamp,
+            unix=unix_dt,  # UnixDateTimeField expects datetime object
             timestamp=row['date'],
-            interval=86400,  # Daily data (86400 seconds = 1 day)
+            interval=interval,
             ma_20=round(float(row['sma_20']), 2) if not pd.isna(row['sma_20']) else None,
             ema=round(float(row['ema_12']), 2) if not pd.isna(row['ema_12']) else None,
             upper_ema=round(float(row['ema_26']), 2) if not pd.isna(row['ema_26']) else None,
@@ -129,42 +134,59 @@ def calculate_indicators_for_symbol(symbol, limit=100):
         print(f"  ⚠️  No valid indicators to save")
 
 def main():
-    """Main function to calculate indicators for all symbols with OHLC data"""
+    """Main function to calculate indicators for all symbols and intervals with OHLC data"""
     print("🧮 Technical Indicators Calculator")
     print("="*50)
     
-    # Get symbols that have OHLC data
-    symbols_with_data = OhlcPrice.objects.values_list('symbol', flat=True).distinct()
+    # Get all unique symbol/interval combinations
+    combinations = OhlcPrice.objects.values('symbol', 'interval').distinct()
     
-    print(f"Found {len(symbols_with_data)} symbols with OHLC data:")
-    for symbol in symbols_with_data:
-        print(f"  - {symbol}")
+    print(f"Found {len(combinations)} symbol/interval combinations:")
+    for combo in combinations:
+        interval_name = {3600: '1H', 14400: '4H', 86400: '1D', 604800: '1W'}.get(combo['interval'], f"{combo['interval']}s")
+        print(f"  - {combo['symbol']} @ {interval_name}")
     
     print("\n" + "="*50)
     
-    # Calculate indicators for each symbol
-    for symbol in symbols_with_data:
+    # Calculate indicators for each symbol/interval combination
+    success_count = 0
+    error_count = 0
+    
+    for combo in combinations:
         try:
-            calculate_indicators_for_symbol(symbol, limit=100)
+            calculate_indicators_for_symbol(
+                symbol=combo['symbol'], 
+                interval=combo['interval'],
+                limit=100
+            )
+            success_count += 1
         except Exception as e:
-            print(f"  ❌ Error calculating indicators for {symbol}: {e}")
+            error_count += 1
+            interval_name = {3600: '1H', 14400: '4H', 86400: '1D', 604800: '1W'}.get(combo['interval'], f"{combo['interval']}s")
+            print(f"  ❌ Error for {combo['symbol']} @ {interval_name}: {e}")
+            import traceback
+            traceback.print_exc()
     
     print("\n" + "="*50)
     print("📊 Summary:")
+    print(f"✅ Successful: {success_count}")
+    print(f"❌ Failed: {error_count}")
     
     # Show final statistics
     total_indicators = Indicator.objects.count()
-    symbols_with_indicators = Indicator.objects.values_list('symbol', flat=True).distinct()
     
-    print(f"Total indicators calculated: {total_indicators}")
-    print(f"Symbols with indicators: {len(symbols_with_indicators)}")
+    print(f"\nTotal indicators in database: {total_indicators}")
     
-    # Show latest indicator for each symbol
-    print("\n📈 Latest indicators:")
-    for symbol in symbols_with_indicators:
-        latest = Indicator.objects.filter(symbol=symbol).order_by('-timestamp').first()
-        if latest:
-            print(f"  {symbol}: RSI={latest.rsi}, MACD={latest.macd}, SMA20={latest.ma_20}")
+    # Show statistics by symbol
+    print("\n📈 Indicators by symbol:")
+    symbols = Indicator.objects.values_list('symbol', flat=True).distinct()
+    for symbol in symbols:
+        for interval in [3600, 14400, 86400, 604800]:
+            count = Indicator.objects.filter(symbol=symbol, interval=interval).count()
+            if count > 0:
+                interval_name = {3600: '1H', 14400: '4H', 86400: '1D', 604800: '1W'}[interval]
+                latest = Indicator.objects.filter(symbol=symbol, interval=interval).order_by('-timestamp').first()
+                print(f"  {symbol} @ {interval_name}: {count} records (Latest RSI={latest.rsi})")
     
     print("\n✅ Indicator calculation complete!")
 

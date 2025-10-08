@@ -452,6 +452,13 @@
                         <span class="text-sm font-medium text-red-700 dark:text-red-300">下轨当值 (EMA Low)</span>
                         <span class="text-sm font-bold text-red-900 dark:text-red-100" x-text="indicators.ema_low_33 || '--'">--</span>
                     </div>
+                    <!-- Last Closing Price -->
+                    <div class="flex justify-between items-center p-3 bg-gray-100 dark:bg-gray-700 rounded-lg border-2 border-gray-300 dark:border-gray-600">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Last <span x-text="selectedInterval === '3600' ? '1H' : selectedInterval === '14400' ? '4H' : selectedInterval === '86400' ? '1D' : '1W'">1D</span> Closing
+                        </span>
+                        <span class="text-lg font-bold text-gray-900 dark:text-white" x-text="lastClosePrice || '--'">--</span>
+                    </div>
                     <div class="text-center py-2 mt-4">
                         <span class="text-xs text-gray-500 dark:text-gray-400" 
                               x-text="`Based on latest ${selectedSymbol} ${selectedInterval === '3600' ? '1H' : selectedInterval === '14400' ? '4H' : selectedInterval === '86400' ? '1D' : '1W'} data`">
@@ -489,6 +496,7 @@
                 selectedInterval: '86400', // Default to 1D
                 livePrice: {},
                 indicators: {},
+                lastClosePrice: '--',
                 wsConnected: false,
                 priceChart: null,
                 volumeChart: null,
@@ -627,6 +635,14 @@
                             };
                         } else {
                             this.indicators = { rsi: '--', macd: '--', sma_20: '--', ema_12: '--', ema_high_33: '--', ema_low_33: '--' };
+                        }
+                        
+                        // Update last closing price
+                        if (data.ohlc && data.ohlc.length > 0) {
+                            const latestOhlc = data.ohlc[0]; // API returns newest first
+                            this.lastClosePrice = '$' + Number(latestOhlc.close).toFixed(2);
+                        } else {
+                            this.lastClosePrice = '--';
                         }
 
                         // Update chart
