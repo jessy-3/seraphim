@@ -572,14 +572,32 @@
                                         </div>
                                         
                                         <!-- Adjustments -->
-                                        <template x-if="currentSignal.confidence_breakdown.adjustments">
+                                        <template x-if="currentSignal.confidence_breakdown.adjustments && currentSignal.confidence_breakdown.adjustments.length > 0">
                                             <div class="space-y-2 border-l-2 border-blue-300 dark:border-blue-600 pl-3">
-                                                <template x-for="(adj, key) in currentSignal.confidence_breakdown.adjustments" :key="key">
+                                                <template x-for="(adj, index) in currentSignal.confidence_breakdown.adjustments" :key="index">
+                                                    <div class="text-xs">
+                                                        <div class="flex items-center justify-between mb-1">
+                                                            <span class="font-medium text-gray-700 dark:text-gray-300" x-text="adj.factor"></span>
+                                                            <span class="font-mono font-bold"
+                                                                  :class="adj.impact > 0 ? 'text-green-600 dark:text-green-400' : adj.impact < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-600'"
+                                                                  x-text="(adj.impact > 0 ? '+' : '') + adj.impact"></span>
+                                                        </div>
+                                                        <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 pl-2">
+                                                            <span x-text="adj.reason"></span>
+                                                            <span class="font-mono" x-text="adj.value"></span>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                        
+                                        <!-- For HOLD signals with object-style adjustments -->
+                                        <template x-if="currentSignal.confidence_breakdown.adjustments && typeof currentSignal.confidence_breakdown.adjustments === 'object' && !Array.isArray(currentSignal.confidence_breakdown.adjustments)">
+                                            <div class="space-y-2 border-l-2 border-gray-300 dark:border-gray-600 pl-3">
+                                                <template x-for="(value, key) in currentSignal.confidence_breakdown.adjustments" :key="key">
                                                     <div class="flex items-center justify-between text-xs">
                                                         <span class="text-gray-600 dark:text-gray-400" x-text="key"></span>
-                                                        <span class="font-mono font-semibold"
-                                                              :class="adj > 0 ? 'text-green-600 dark:text-green-400' : adj < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-600'"
-                                                              x-text="(adj > 0 ? '+' : '') + adj"></span>
+                                                        <span class="text-gray-700 dark:text-gray-300" x-text="value"></span>
                                                     </div>
                                                 </template>
                                             </div>
