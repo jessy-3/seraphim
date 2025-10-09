@@ -14,6 +14,9 @@ from django.conf.urls.static import static
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 urlpatterns = [
+    # Custom logout (must come before accounts/ to override default)
+    path('accounts/logout/', views.CustomLogoutView.as_view(), name='logout'),
+    
     # Authentication
     path('accounts/', include('django.contrib.auth.urls')),
     

@@ -541,3 +541,21 @@ class ManualDataUpdateView(View):
             'result': result.result if result.ready() and result.successful() else None,
             'error': str(result.info) if result.failed() else None
         })
+
+
+class CustomLogoutView(View):
+    """
+    Custom logout view that handles both GET and POST requests.
+    Django 5.x logout only accepts POST by default, but Admin links use GET.
+    """
+    def get(self, request):
+        from django.contrib.auth import logout
+        from django.shortcuts import redirect
+        logout(request)
+        return redirect('/admin/')
+    
+    def post(self, request):
+        from django.contrib.auth import logout
+        from django.shortcuts import redirect
+        logout(request)
+        return redirect('/admin/')
