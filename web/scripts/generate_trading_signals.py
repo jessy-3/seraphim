@@ -222,6 +222,22 @@ def generate_trend_following_signal(symbol, interval, latest_price, indicator, r
     confidence = 50
     trigger_reasons = []
     
+    # Initialize confidence breakdown tracker
+    breakdown = {
+        'base_score': 50,
+        'adjustments': [],
+        'final_score': 0,
+        'metrics': {
+            'channel_position': channel_position,
+            'deviation': deviation,
+            'rsi': rsi,
+            'gain_10d': gain_10d,
+            'gain_20d': gain_20d,
+            'historical_distance': historical_pos['distance_from_high'] if historical_pos else None,
+            'volume_divergence': volume_div
+        }
+    }
+    
     # ========================================
     # BUY SIGNAL: Price above EMA High
     # ========================================
@@ -233,74 +249,99 @@ def generate_trend_following_signal(symbol, interval, latest_price, indicator, r
         if channel_position is not None:
             if channel_position > 200:
                 confidence -= 40
+                breakdown['adjustments'].append({'factor': '通道位置', 'value': f'{channel_position:.0f}%', 'impact': -40, 'reason': '极度超买'})
                 trigger_reasons.append(f"⚠️ 极度超买：通道位置 {channel_position:.0f}%")
             elif channel_position > 150:
                 confidence -= 30
+                breakdown['adjustments'].append({'factor': '通道位置', 'value': f'{channel_position:.0f}%', 'impact': -30, 'reason': '严重超买'})
                 trigger_reasons.append(f"⚠️ 严重超买：通道位置 {channel_position:.0f}%")
             elif channel_position > 100:
                 confidence -= 20
+                breakdown['adjustments'].append({'factor': '通道位置', 'value': f'{channel_position:.0f}%', 'impact': -20, 'reason': '突破通道'})
                 trigger_reasons.append(f"⚠️ 突破通道：位置 {channel_position:.0f}%")
             elif channel_position > 80:
                 confidence -= 10
+                breakdown['adjustments'].append({'factor': '通道位置', 'value': f'{channel_position:.0f}%', 'impact': -10, 'reason': '接近上轨'})
+            elif channel_position < 40:
+                confidence += 20
+                breakdown['adjustments'].append({'factor': '通道位置', 'value': f'{channel_position:.0f}%', 'impact': +20, 'reason': '低位机会'})
         
         # 2. Deviation from EMA High
         deviation_penalty = get_deviation_penalty(deviation)
-        confidence -= deviation_penalty
-        if deviation and deviation > 0:
-            trigger_reasons.append(f"乖离率 {deviation:+.1f}%")
+        if deviation_penalty > 0:
+            confidence -= deviation_penalty
+            breakdown['adjustments'].append({'factor': '乖离率', 'value': f'{deviation:+.1f}%', 'impact': -deviation_penalty, 'reason': '价格偏离EMA'})
+            if deviation and deviation > 0:
+                trigger_reasons.append(f"乖离率 {deviation:+.1f}%")
         
         # 3. RSI Overbought Check
         if rsi is not None:
             if rsi > 80:
                 confidence -= 25
+                breakdown['adjustments'].append({'factor': 'RSI', 'value': f'{rsi:.1f}', 'impact': -25, 'reason': 'RSI极度超买'})
                 trigger_reasons.append(f"⚠️ RSI极度超买 {rsi:.1f}")
             elif rsi > 70:
                 confidence -= 15
+                breakdown['adjustments'].append({'factor': 'RSI', 'value': f'{rsi:.1f}', 'impact': -15, 'reason': 'RSI超买'})
                 trigger_reasons.append(f"⚠️ RSI超买 {rsi:.1f}")
             elif rsi < 60:
                 confidence += 10
+                breakdown['adjustments'].append({'factor': 'RSI', 'value': f'{rsi:.1f}', 'impact': +10, 'reason': 'RSI健康'})
                 trigger_reasons.append(f"✅ RSI健康 {rsi:.1f}")
         
         # 4. Recent Gain Check
         gain_penalty, gain_warnings = get_gain_penalty(gain_10d, gain_20d)
-        confidence -= gain_penalty
-        trigger_reasons.extend(gain_warnings)
+        if gain_penalty > 0:
+            confidence -= gain_penalty
+            breakdown['adjustments'].append({'factor': '近期涨幅', 'value': f'10d:{gain_10d:+.1f}%', 'impact': -gain_penalty, 'reason': '涨幅过快'})
+            trigger_reasons.extend(gain_warnings)
         
         # 5. Historical Position Check
         if historical_pos:
             hist_penalty, hist_warnings = get_historical_penalty(historical_pos['distance_from_high'])
-            confidence -= hist_penalty
-            trigger_reasons.extend(hist_warnings)
+            if hist_penalty != 0:
+                confidence -= hist_penalty
+                breakdown['adjustments'].append({'factor': '历史位置', 'value': f"{historical_pos['distance_from_high']:+.1f}%", 'impact': -hist_penalty, 'reason': '距年度高点'})
+                trigger_reasons.extend(hist_warnings)
         
         # 6. Volume Divergence
         if volume_div == 'BEARISH_DIV':
             confidence -= 15
+            breakdown['adjustments'].append({'factor': '成交量背离', 'value': '顶背离', 'impact': -15, 'reason': '价涨量缩'})
             trigger_reasons.append("⚠️ 顶背离：价涨量缩")
         
         # 7. Trend Confirmation
         if regime.regime_type == 'trending':
             confidence += 15
+            breakdown['adjustments'].append({'factor': '市场趋势', 'value': 'trending', 'impact': +15, 'reason': '趋势市场'})
             trigger_reasons.append("✅ 趋势市场")
         
         # 8. Volume Confirmation
         if regime.volume_ratio and regime.volume_ratio > 1.2:
             confidence += 10
+            breakdown['adjustments'].append({'factor': '成交量确认', 'value': f'{regime.volume_ratio:.1f}x', 'impact': +10, 'reason': '成交量放大'})
             trigger_reasons.append(f"✅ 成交量 {regime.volume_ratio:.1f}x")
         
         # 9. MACD Confirmation
         if indicator.macd and indicator.signal_line:
             if float(indicator.macd) > float(indicator.signal_line):
                 confidence += 10
+                breakdown['adjustments'].append({'factor': 'MACD', 'value': '金叉', 'impact': +10, 'reason': 'MACD金叉'})
                 trigger_reasons.append("✅ MACD金叉")
         
         # Adjust signal type based on final confidence
         confidence = max(0, min(100, confidence))
+        breakdown['final_score'] = confidence
         
         if confidence < 30:
             signal_type = 'hold'  # Too risky, don't chase
             trigger_reasons.insert(0, "❌ 追高风险过大")
+            breakdown['decision'] = '置信度 < 30%，改为 HOLD'
         elif confidence < 50:
             trigger_reasons.insert(0, "⚠️ 谨慎小仓")
+            breakdown['decision'] = '置信度 < 50%，小仓试探'
+        else:
+            breakdown['decision'] = '置信度充足，可以买入'
         
         # Stop loss at EMA Low
         stop_loss = Decimal(str(ema_low))
@@ -318,6 +359,7 @@ def generate_trend_following_signal(symbol, interval, latest_price, indicator, r
             'trigger_reason': ' | '.join(trigger_reasons),
             'channel_position': channel_position,
             'deviation': deviation,
+            'confidence_breakdown': breakdown,
         }
     
     # ========================================
@@ -629,6 +671,7 @@ def generate_signal_for_symbol(symbol, interval=86400):
             rsi_value=round(float(latest_indicator.rsi), 2) if latest_indicator.rsi else None,
             macd_value=latest_indicator.macd,
             volume_ratio=latest_regime.volume_ratio,
+            confidence_breakdown=signal_data.get('confidence_breakdown'),
             status='active'
         )
         signal.save()

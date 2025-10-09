@@ -434,3 +434,105 @@ class TradingSignalDetailView(View):
         }
         
         return JsonResponse(data)
+
+
+class ManualDataUpdateView(View):
+    """
+    Manual trigger for data updates
+    Endpoint: /api/manual-update/
+    """
+    
+    def post(self, request):
+        """
+        Trigger manual data update
+        Optional query parameters:
+        - task: specific task to run (ohlc, indicators, ema, regime, signals, all)
+        """
+        from api.tasks import (
+            fetch_ohlc_data, 
+            calculate_indicators, 
+            calculate_ema_channel,
+            calculate_market_regime,
+            generate_trading_signals,
+            manual_update_all
+        )
+        
+        task_param = request.GET.get('task', 'all').lower()
+        
+        try:
+            if task_param == 'ohlc':
+                result = fetch_ohlc_data.delay()
+                task_id = result.id
+                message = "OHLC data fetch started"
+                
+            elif task_param == 'indicators':
+                result = calculate_indicators.delay()
+                task_id = result.id
+                message = "Indicator calculations started"
+                
+            elif task_param == 'ema':
+                result = calculate_ema_channel.delay()
+                task_id = result.id
+                message = "EMA channel calculations started"
+                
+            elif task_param == 'regime':
+                result = calculate_market_regime.delay()
+                task_id = result.id
+                message = "Market regime calculations started"
+                
+            elif task_param == 'signals':
+                result = generate_trading_signals.delay()
+                task_id = result.id
+                message = "Trading signal generation started"
+                
+            elif task_param == 'all':
+                result = manual_update_all.delay()
+                task_id = result.id
+                message = "Full data update started (all tasks)"
+                
+            else:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Invalid task parameter: {task_param}',
+                    'valid_tasks': ['ohlc', 'indicators', 'ema', 'regime', 'signals', 'all']
+                }, status=400)
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': message,
+                'task_id': task_id,
+                'task_type': task_param
+            })
+            
+        except Exception as e:
+            logger.error(f"Manual update failed: {str(e)}")
+            return JsonResponse({
+                'status': 'error',
+                'message': str(e)
+            }, status=500)
+    
+    def get(self, request):
+        """
+        Get task status
+        Query parameter: task_id
+        """
+        from celery.result import AsyncResult
+        
+        task_id = request.GET.get('task_id')
+        
+        if not task_id:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'task_id parameter is required'
+            }, status=400)
+        
+        result = AsyncResult(task_id)
+        
+        return JsonResponse({
+            'task_id': task_id,
+            'status': result.status,
+            'ready': result.ready(),
+            'successful': result.successful() if result.ready() else None,
+            'result': result.result if result.ready() and result.successful() else None,
+            'error': str(result.info) if result.failed() else None
+        })

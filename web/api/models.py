@@ -274,6 +274,9 @@ class TradingSignal(models.Model):
     macd_value = models.DecimalField(max_digits=18, decimal_places=8, null=True)
     volume_ratio = models.DecimalField(max_digits=5, decimal_places=2, null=True)
     
+    # Confidence breakdown (JSON field for detailed analysis)
+    confidence_breakdown = models.JSONField(null=True, blank=True)  # Stores detailed score components
+    
     # Status tracking
     status = models.CharField(max_length=20, default='active')  # active, closed, expired, cancelled
     exit_price = models.DecimalField(max_digits=18, decimal_places=8, null=True)

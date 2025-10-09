@@ -64,6 +64,38 @@ services:
       - SERVER_IP=localhost
       - SERVER_PORT=8082
 
+  celery-worker:
+    build: ./web
+    command: celery -A seraphim worker --loglevel=info
+    depends_on:
+      - redis
+      - postgres
+      - web
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    restart: unless-stopped
+    volumes:
+      - ./web:/app
+
+  celery-beat:
+    build: ./web
+    command: celery -A seraphim beat --loglevel=info
+    depends_on:
+      - redis
+      - postgres
+      - celery-worker
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    restart: unless-stopped
+    volumes:
+      - ./web:/app
+
   nginx:
     build: ./nginx
     ports:
