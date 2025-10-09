@@ -1,0 +1,22 @@
+{
+  "go.toolsManagement.autoUpdate": false,
+  "go.useLanguageServer": false,
+  "go.languageServerFlags": [],
+  "go.enableCodeLens": {},
+  "go.toolsEnvVars": {
+    "GO111MODULE": "on"
+  },
+  "files.exclude": {
+    "**/pkg/mod": true
+  },
+  "search.exclude": {
+    "**/pkg/mod": true,
+    "**/legacy/gobackend/pkg": true
+  },
+  "files.watcherExclude": {
+    "**/pkg/mod/**": true,
+    "**/legacy/gobackend/pkg/**": true
+  }
+}
+
+

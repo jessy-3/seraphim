@@ -52,7 +52,7 @@ INSTALLED_APPS = [
     'crispy_forms',
     'seraphim',
     'api',
-    'trading',
+    # 'trading',  # Legacy trading view, disabled in favor of seraphim dashboard
 ]
 
 CRISPY_TEMPLATE_PACK = 'bootstrap3'  # Add
