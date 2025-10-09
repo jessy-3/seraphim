@@ -796,6 +796,578 @@ def multi_timeframe_analysis(symbol):
 
 ---
 
+## 防止追高追低的多维度判断机制
+
+### 核心问题
+在实际交易中，单纯依赖"价格突破 EMA High"买入或"价格跌破 EMA Low"卖出，容易导致：
+1. **追高风险**：在牛市顶部、价格已严重超买时仍然买入
+2. **杀跌风险**：在熊市底部、价格已严重超卖时仍然卖出
+3. **忽略相对位置**：不考虑当前价格在历史周期中的相对位置
+
+**实际案例**：
+- BTC 从 $62,000 涨到 $130,000（涨幅 110%），仍然突破 EMA High，系统会发出买入信号
+- 但此时 RSI 可能已经 > 85，乖离率 > 10%，接近历史顶部，追高风险极大
+
+### 解决方案：多维度相对位置判断
+
+#### 1️⃣ 通道位置（Channel Position） - 核心维度
+
+**定义**：
+```
+通道位置 = (当前价格 - EMA Low) / (EMA High - EMA Low) × 100%
+```
+
+**判断标准**：
+
+| 通道位置 | 市场状态 | 建议操作 | 说明 |
+|---------|---------|---------|------|
+| **0-20%** | 📉 极度超卖 | ✅ 考虑买入 | 价格接近 EMA Low，底部区域 |
+| **20-40%** | 💚 健康底部 | ✅ 适合买入 | 安全的买入区间 |
+| **40-60%** | ⚪ 中性区域 | ⏸️ 持有观望 | 通道中部，等待明确信号 |
+| **60-80%** | 💛 接近顶部 | ⚠️ 减仓准备 | 价格接近 EMA High |
+| **80-100%** | 🔴 触及上轨 | ❌ 不建议买入 | 触及 EMA High，风险增加 |
+| **100-120%** | ⚠️ 轻度突破 | 🔍 观察突破有效性 | 可能是强势突破，也可能假突破 |
+| **120-150%** | 🔴 中度超买 | ❌ 不要追高 | 价格显著高于通道，随时回调 |
+| **150-200%** | 🚨 严重超买 | 💰 考虑止盈 | 极度偏离，风险极高 |
+| **> 200%** | 💀 极度危险 | 💰💰 大幅减仓 | 泡沫状态，准备暴跌 |
+
+**Python 实现**：
+```python
+def calculate_channel_position(price, ema_low, ema_high):
+    """
+    计算价格在通道中的相对位置
+    """
+    if not ema_low or not ema_high or ema_high <= ema_low:
+        return None
+    
+    position = (price - ema_low) / (ema_high - ema_low) * 100
+    return round(position, 1)
+
+# 使用示例
+position = calculate_channel_position(122107, 115594, 118295)
+# 返回: 241.1% → 🚨 严重超买，不要买入
+```
+
+#### 2️⃣ 乖离率（Price Deviation）
+
+**定义**：
+```
+乖离率 = (当前价格 - EMA High) / EMA High × 100%
+```
+
+**判断标准**：
+
+| 乖离率 | 风险等级 | 建议 | 置信度惩罚 |
+|-------|---------|------|-----------|
+| **< 0%** | ✅ 安全 | 在通道内，可交易 | 0 |
+| **0-3%** | ⚠️ 轻微偏离 | 观察，可小仓 | -5% |
+| **3-5%** | 🔴 中度偏离 | 不建议买入 | -15% |
+| **5-10%** | 🚨 严重偏离 | 考虑止盈 | -25% |
+| **> 10%** | 💀 极度偏离 | 准备反转 | -40% |
+
+**Python 实现**：
+```python
+def calculate_deviation(price, ema_high):
+    """
+    计算价格相对 EMA High 的乖离率
+    """
+    if not ema_high:
+        return None
+    
+    deviation = (price - ema_high) / ema_high * 100
+    return round(deviation, 2)
+
+def get_deviation_penalty(deviation):
+    """
+    根据乖离率计算置信度惩罚
+    """
+    if deviation is None:
+        return 0
+    
+    if deviation < 0:
+        return 0  # 在通道内，无惩罚
+    elif deviation < 3:
+        return 5
+    elif deviation < 5:
+        return 15
+    elif deviation < 10:
+        return 25
+    else:
+        return 40
+```
+
+#### 3️⃣ RSI 动量确认
+
+**判断标准**：
+
+| RSI 区间 | 市场状态 | 买入建议 | 卖出建议 | 置信度调整 |
+|---------|---------|---------|---------|-----------|
+| **< 30** | 超卖 | ✅ 配合低通道位置 | ❌ 不要杀跌 | +15% (买) |
+| **30-40** | 健康回调 | ✅ 较好买点 | ⏸️ 观察 | +5% (买) |
+| **40-60** | 中性 | ⏸️ 观望 | ⏸️ 观望 | 0 |
+| **60-70** | 偏强 | ⚠️ 谨慎 | ⏸️ 观察 | -5% (买) |
+| **70-80** | 🔴 超买 | ❌ 不要追高 | ✅ 考虑止盈 | -15% (买) |
+| **> 80** | 🚨 极度超买 | ❌ 危险 | ✅ 建议止盈 | -25% (买) |
+
+**与通道位置的组合判断**：
+```python
+def evaluate_buy_signal(channel_position, rsi, deviation):
+    """
+    组合判断买入信号的合理性
+    """
+    warnings = []
+    confidence = 50  # 基础置信度
+    
+    # 1. 通道位置判断
+    if channel_position > 150:
+        warnings.append(f"严重超买：通道位置 {channel_position:.0f}%")
+        confidence -= 30
+    elif channel_position > 100:
+        warnings.append(f"突破通道：位置 {channel_position:.0f}%")
+        confidence -= 15
+    elif channel_position > 80:
+        confidence -= 10
+    elif channel_position < 40:
+        confidence += 15  # 低位买入，加分
+    
+    # 2. RSI 判断
+    if rsi > 80:
+        warnings.append(f"RSI 极度超买：{rsi:.1f}")
+        confidence -= 25
+    elif rsi > 70:
+        warnings.append(f"RSI 超买：{rsi:.1f}")
+        confidence -= 15
+    elif rsi < 40:
+        confidence += 10  # RSI 健康，加分
+    
+    # 3. 乖离率判断
+    if deviation > 10:
+        warnings.append(f"极度偏离 EMA：{deviation:.1f}%")
+        confidence -= 40
+    elif deviation > 5:
+        warnings.append(f"严重偏离 EMA：{deviation:.1f}%")
+        confidence -= 25
+    elif deviation > 3:
+        confidence -= 15
+    
+    # 综合判断
+    confidence = max(0, min(100, confidence))
+    
+    if confidence < 30:
+        signal = 'HOLD'  # 置信度过低，改为持有
+        reason = '⚠️ 追高风险：' + ' | '.join(warnings)
+    elif confidence < 50:
+        signal = 'BUY_SMALL'  # 小仓试探
+        reason = '⚠️ 谨慎买入：' + ' | '.join(warnings)
+    else:
+        signal = 'BUY'
+        reason = '✅ 合理买点'
+    
+    return {
+        'signal': signal,
+        'confidence': confidence,
+        'reason': reason,
+        'warnings': warnings
+    }
+```
+
+#### 4️⃣ 近期涨幅（Recent Gain）
+
+**定义**：
+```
+近期涨幅 = (当前价格 - N日前价格) / N日前价格 × 100%
+```
+
+**判断标准**：
+
+| 指标 | 10日涨幅 | 20日涨幅 | 风险评估 | 建议 |
+|-----|---------|---------|---------|------|
+| **平稳** | < 5% | < 10% | ✅ 安全 | 可以追涨 |
+| **快速** | 5-10% | 10-20% | ⚠️ 警惕 | 谨慎追涨 |
+| **过快** | 10-20% | 20-40% | 🔴 危险 | 不建议追 |
+| **极端** | > 20% | > 40% | 🚨 泡沫 | 等待回调 |
+
+**Python 实现**：
+```python
+def calculate_recent_gain(current_price, history, days=10):
+    """
+    计算近期涨幅
+    
+    Args:
+        current_price: 当前价格
+        history: OHLC 数据列表（按时间倒序）
+        days: 回看天数
+    
+    Returns:
+        涨幅百分比
+    """
+    if len(history) <= days:
+        return None
+    
+    past_price = float(history[days].close)
+    gain = (current_price - past_price) / past_price * 100
+    
+    return round(gain, 2)
+
+def get_gain_penalty(gain_10d, gain_20d):
+    """
+    根据近期涨幅计算置信度惩罚
+    """
+    penalty = 0
+    warnings = []
+    
+    if gain_10d is not None:
+        if gain_10d > 20:
+            penalty += 20
+            warnings.append(f"10日暴涨 {gain_10d:.1f}%")
+        elif gain_10d > 10:
+            penalty += 10
+            warnings.append(f"10日快速上涨 {gain_10d:.1f}%")
+    
+    if gain_20d is not None:
+        if gain_20d > 40:
+            penalty += 15
+            warnings.append(f"20日涨幅过大 {gain_20d:.1f}%")
+        elif gain_20d > 20:
+            penalty += 5
+    
+    return penalty, warnings
+```
+
+#### 5️⃣ 历史位置（Historical Context）
+
+**定义**：
+```
+距离年度高点 = (当前价格 - 年度最高价) / 年度最高价 × 100%
+距离年度低点 = (当前价格 - 年度最低价) / 年度最低价 × 100%
+```
+
+**判断标准**：
+
+| 距离年度高点 | 市场位置 | 风险等级 | 买入建议 |
+|------------|---------|---------|---------|
+| **> -5%** | 🚨 历史顶部 | 极高 | ❌ 不要追高 |
+| **-5% ~ -20%** | ⚠️ 中高位 | 较高 | ⚠️ 谨慎 |
+| **-20% ~ -40%** | 💚 中间区域 | 中等 | ✅ 可考虑 |
+| **-40% ~ -60%** | 💚 偏低位 | 较低 | ✅ 较好机会 |
+| **< -60%** | 📉 历史底部 | 低 | ✅✅ 绝佳机会 |
+
+**Python 实现**：
+```python
+def calculate_historical_position(current_price, historical_data, lookback_days=365):
+    """
+    计算价格在历史区间中的位置
+    """
+    prices = [float(p.close) for p in historical_data[:lookback_days]]
+    
+    if not prices:
+        return None, None
+    
+    year_high = max(prices)
+    year_low = min(prices)
+    
+    distance_from_high = (current_price - year_high) / year_high * 100
+    distance_from_low = (current_price - year_low) / year_low * 100
+    
+    return {
+        'year_high': year_high,
+        'year_low': year_low,
+        'distance_from_high': round(distance_from_high, 2),
+        'distance_from_low': round(distance_from_low, 2),
+        'position_pct': round((current_price - year_low) / (year_high - year_low) * 100, 1)
+    }
+
+def get_historical_penalty(distance_from_high):
+    """
+    根据历史位置计算置信度惩罚
+    """
+    if distance_from_high is None:
+        return 0, []
+    
+    if distance_from_high > -5:
+        return 20, [f"接近年度高点（{distance_from_high:+.1f}%）"]
+    elif distance_from_high > -15:
+        return 10, [f"中高位置（{distance_from_high:+.1f}%）"]
+    elif distance_from_high < -50:
+        return -15, [f"低位机会（{distance_from_high:+.1f}%）"]  # 负值表示加分
+    else:
+        return 0, []
+```
+
+#### 6️⃣ 成交量背离检测
+
+**定义**：
+```
+价涨量缩（顶背离）：价格上涨，但成交量下降 → 上涨动能衰竭
+价跌量缩（底背离）：价格下跌，但成交量下降 → 下跌动能衰竭
+```
+
+**Python 实现**：
+```python
+def detect_volume_divergence(price_data, volume_data, window=5):
+    """
+    检测成交量背离
+    
+    Args:
+        price_data: 价格序列（最新在前）
+        volume_data: 成交量序列（最新在前）
+        window: 对比窗口
+    
+    Returns:
+        'BEARISH_DIV' (顶背离), 'BULLISH_DIV' (底背离), None
+    """
+    if len(price_data) < window * 2 or len(volume_data) < window * 2:
+        return None
+    
+    # 最近 window 天的平均价格和成交量
+    recent_price_avg = sum(price_data[:window]) / window
+    recent_volume_avg = sum(volume_data[:window]) / window
+    
+    # 之前 window 天的平均价格和成交量
+    past_price_avg = sum(price_data[window:window*2]) / window
+    past_volume_avg = sum(volume_data[window:window*2]) / window
+    
+    price_change = (recent_price_avg - past_price_avg) / past_price_avg
+    volume_change = (recent_volume_avg - past_volume_avg) / past_volume_avg
+    
+    # 顶背离：价格上涨 > 5%，但成交量下降 > 20%
+    if price_change > 0.05 and volume_change < -0.2:
+        return 'BEARISH_DIV'
+    
+    # 底背离：价格下跌 > 5%，但成交量下降 > 20%
+    elif price_change < -0.05 and volume_change < -0.2:
+        return 'BULLISH_DIV'
+    
+    return None
+```
+
+### 综合判断逻辑
+
+#### 完整的信号生成算法
+
+```python
+class AdvancedSignalGenerator:
+    """
+    改进的交易信号生成器
+    融合多维度判断，防止追高追低
+    """
+    
+    def generate_buy_signal(self, symbol, interval):
+        """
+        生成买入信号
+        """
+        # 1. 获取数据
+        data = self._fetch_data(symbol, interval)
+        
+        # 2. 计算各维度指标
+        channel_position = calculate_channel_position(
+            data['price'], data['ema_low'], data['ema_high']
+        )
+        deviation = calculate_deviation(data['price'], data['ema_high'])
+        gain_10d = calculate_recent_gain(data['price'], data['history'], 10)
+        gain_20d = calculate_recent_gain(data['price'], data['history'], 20)
+        historical = calculate_historical_position(data['price'], data['history'])
+        volume_div = detect_volume_divergence(
+            [p.close for p in data['history']],
+            [p.volume for p in data['history']]
+        )
+        
+        # 3. 初始化置信度和警告
+        confidence = 50  # 基础分
+        warnings = []
+        
+        # 4. 通道位置判断（权重最高）
+        if channel_position is not None:
+            if channel_position > 200:
+                confidence -= 40
+                warnings.append(f"极度超买：通道位置 {channel_position:.0f}%")
+            elif channel_position > 150:
+                confidence -= 30
+                warnings.append(f"严重超买：通道位置 {channel_position:.0f}%")
+            elif channel_position > 100:
+                confidence -= 20
+                warnings.append(f"突破通道：位置 {channel_position:.0f}%")
+            elif channel_position > 80:
+                confidence -= 10
+            elif channel_position < 40:
+                confidence += 20  # 低位买入，重点加分
+                warnings.append(f"✅ 低位机会：通道位置 {channel_position:.0f}%")
+        
+        # 5. 乖离率判断
+        deviation_penalty = get_deviation_penalty(deviation)
+        confidence -= deviation_penalty
+        if deviation_penalty > 0:
+            warnings.append(f"价格偏离 EMA High {deviation:+.1f}%")
+        
+        # 6. RSI 判断
+        rsi = data['rsi']
+        if rsi > 80:
+            confidence -= 25
+            warnings.append(f"RSI 极度超买：{rsi:.1f}")
+        elif rsi > 70:
+            confidence -= 15
+            warnings.append(f"RSI 超买：{rsi:.1f}")
+        elif rsi < 40:
+            confidence += 15
+            warnings.append(f"✅ RSI 健康：{rsi:.1f}")
+        
+        # 7. 近期涨幅判断
+        gain_penalty, gain_warnings = get_gain_penalty(gain_10d, gain_20d)
+        confidence -= gain_penalty
+        warnings.extend(gain_warnings)
+        
+        # 8. 历史位置判断
+        hist_penalty, hist_warnings = get_historical_penalty(
+            historical['distance_from_high']
+        )
+        confidence -= hist_penalty
+        warnings.extend(hist_warnings)
+        
+        # 9. 成交量背离判断
+        if volume_div == 'BEARISH_DIV':
+            confidence -= 15
+            warnings.append("⚠️ 顶背离：价涨量缩")
+        elif volume_div == 'BULLISH_DIV':
+            confidence += 10
+            warnings.append("✅ 底背离：价跌量缩")
+        
+        # 10. 置信度归一化
+        confidence = max(0, min(100, confidence))
+        
+        # 11. 生成最终信号
+        if confidence >= 60:
+            signal_type = 'BUY'
+            action = '✅ 买入'
+        elif confidence >= 40:
+            signal_type = 'BUY_SMALL'
+            action = '⚠️ 小仓试探'
+        else:
+            signal_type = 'HOLD'
+            action = '❌ 不要追高，持有观望'
+        
+        return {
+            'signal': signal_type,
+            'action': action,
+            'confidence': confidence,
+            'reason': ' | '.join(warnings) if warnings else '正常信号',
+            'metrics': {
+                'channel_position': channel_position,
+                'deviation': deviation,
+                'rsi': rsi,
+                'gain_10d': gain_10d,
+                'gain_20d': gain_20d,
+                'distance_from_high': historical['distance_from_high']
+            }
+        }
+```
+
+### 实际案例分析
+
+#### 案例 1: BTC = $122,107（当前真实数据）
+
+**数据输入**：
+```
+价格: $122,107
+EMA High: $118,295
+EMA Low: $115,594
+RSI: 78.5
+10日涨幅: +7.12%
+20日涨幅: +5.50%
+距年度高点: -2.13%
+```
+
+**计算过程**：
+```
+1. 通道位置 = (122107 - 115594) / (118295 - 115594) × 100% = 241.1%
+   → 惩罚 -40 分（极度超买）
+
+2. 乖离率 = (122107 - 118295) / 118295 × 100% = +3.22%
+   → 惩罚 -15 分（中度偏离）
+
+3. RSI = 78.5
+   → 惩罚 -15 分（超买）
+
+4. 10日涨幅 = +7.12%
+   → 惩罚 -5 分（快速上涨）
+
+5. 距年度高点 = -2.13%
+   → 惩罚 -20 分（接近历史顶部）
+
+置信度 = 50 - 40 - 15 - 15 - 5 - 20 = -45 → 调整为 0
+```
+
+**最终判断**：
+```
+❌ 不要买入（HOLD）
+置信度: 0%
+原因:
+  - 极度超买：通道位置 241%
+  - 价格偏离 EMA High +3.22%
+  - RSI 超买：78.5
+  - 10日快速上涨 +7.12%
+  - 接近年度高点（-2.13%）
+  
+建议:
+  - 持有现有仓位
+  - 设置移动止损在 $118,000（EMA High）
+  - 等待回调到 $115,000（EMA Low）再考虑加仓
+```
+
+#### 案例 2: BTC = $130,000（假设场景）
+
+**计算**：
+```
+通道位置 = (130000 - 115594) / (118295 - 115594) × 100% = 533%
+乖离率 = +9.9%
+RSI: 估计 > 85
+10日涨幅: +14%
+距年度高点: +4.2%
+
+置信度 = 50 - 40 - 40 - 25 - 20 - 20 = -95 → 0
+```
+
+**最终判断**：
+```
+🚨 强烈建议止盈（SELL）
+置信度: 95%（反向，即"不买入"的置信度）
+原因: 泡沫状态，极度危险
+建议: 止盈 50-70% 仓位
+```
+
+#### 案例 3: BTC = $100,000（健康回调后）
+
+**假设数据**：
+```
+价格: $100,000
+EMA High: $115,000
+EMA Low: $112,000
+通道位置 = (100000 - 112000) / (115000 - 112000) = -400% (在通道下方)
+RSI: 42
+10日涨幅: -8%
+距年度高点: -19.8%
+```
+
+**计算**：
+```
+置信度 = 50 + 20（低位）+ 15（RSI健康）+ 0（跌幅正常）= 85
+
+✅ 买入信号
+置信度: 85%
+原因: 价格回调到通道下方，RSI 健康，适合买入
+```
+
+### 小结
+
+通过多维度综合判断，系统可以：
+1. ✅ **避免牛市顶部追高**（通道位置 > 150%，乖离率 > 5%，RSI > 75）
+2. ✅ **避免熊市底部杀跌**（通道位置 < 20%，RSI < 30）
+3. ✅ **识别最佳买点**（通道 20-40%，RSI 30-50，价格接近 EMA Low）
+4. ✅ **及时止盈**（通道 > 200%，成交量背离）
+
+这套机制将显著提高交易信号的质量和稳健性。
+
+---
+
 ## 推荐组合方案
 
 ### 设计原则

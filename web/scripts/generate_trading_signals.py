@@ -18,10 +18,187 @@ django.setup()
 
 from api.models import OhlcPrice, Indicator, MarketRegime, TradingSignal
 
-def generate_trend_following_signal(symbol, interval, latest_price, indicator, regime):
+# ========================================
+# Multi-Dimensional Analysis Functions
+# ========================================
+
+def calculate_channel_position(price, ema_low, ema_high):
     """
-    Strategy 1: EMA Channel Breakout (Trend Following)
-    - Buy: Price breaks above EMA High in trending market
+    Calculate price position within EMA channel
+    Returns: percentage (0-100% = within channel, >100% = above channel)
+    """
+    if not ema_low or not ema_high or ema_high <= ema_low:
+        return None
+    
+    position = (price - ema_low) / (ema_high - ema_low) * 100
+    return round(position, 1)
+
+def calculate_deviation(price, ema_high):
+    """
+    Calculate price deviation from EMA High
+    Returns: percentage (positive = above EMA High)
+    """
+    if not ema_high or ema_high == 0:
+        return None
+    
+    deviation = (price - ema_high) / ema_high * 100
+    return round(deviation, 2)
+
+def get_deviation_penalty(deviation):
+    """
+    Calculate confidence penalty based on price deviation
+    """
+    if deviation is None or deviation < 0:
+        return 0  # No penalty if within channel
+    
+    if deviation < 3:
+        return 5
+    elif deviation < 5:
+        return 15
+    elif deviation < 10:
+        return 25
+    else:
+        return 40
+
+def calculate_recent_gain(current_price, historical_data, days=10):
+    """
+    Calculate recent price gain over N days
+    Args:
+        current_price: current closing price
+        historical_data: list of OhlcPrice objects (newest first)
+        days: lookback period
+    Returns: gain percentage
+    """
+    if len(historical_data) <= days:
+        return None
+    
+    past_price = float(historical_data[days].close)
+    gain = (current_price - past_price) / past_price * 100
+    
+    return round(gain, 2)
+
+def get_gain_penalty(gain_10d, gain_20d):
+    """
+    Calculate confidence penalty based on recent gains
+    """
+    penalty = 0
+    warnings = []
+    
+    if gain_10d is not None:
+        if gain_10d > 20:
+            penalty += 20
+            warnings.append(f"10日暴涨 {gain_10d:+.1f}%")
+        elif gain_10d > 10:
+            penalty += 10
+            warnings.append(f"10日快涨 {gain_10d:+.1f}%")
+        elif gain_10d > 7:
+            penalty += 5
+            warnings.append(f"10日上涨 {gain_10d:+.1f}%")
+    
+    if gain_20d is not None:
+        if gain_20d > 40:
+            penalty += 15
+            warnings.append(f"20日涨幅过大 {gain_20d:+.1f}%")
+        elif gain_20d > 20:
+            penalty += 5
+    
+    return penalty, warnings
+
+def calculate_historical_position(current_price, historical_data, lookback_days=365):
+    """
+    Calculate price position within historical range
+    """
+    if len(historical_data) < lookback_days:
+        lookback_days = len(historical_data)
+    
+    if lookback_days == 0:
+        return None
+    
+    prices = [float(p.close) for p in historical_data[:lookback_days]]
+    
+    if not prices:
+        return None
+    
+    year_high = max(prices)
+    year_low = min(prices)
+    
+    distance_from_high = (current_price - year_high) / year_high * 100
+    distance_from_low = (current_price - year_low) / year_low * 100
+    
+    return {
+        'year_high': year_high,
+        'year_low': year_low,
+        'distance_from_high': round(distance_from_high, 2),
+        'distance_from_low': round(distance_from_low, 2),
+        'position_pct': round((current_price - year_low) / (year_high - year_low) * 100, 1) if year_high != year_low else 50
+    }
+
+def get_historical_penalty(distance_from_high):
+    """
+    Calculate confidence penalty based on historical position
+    """
+    if distance_from_high is None:
+        return 0, []
+    
+    if distance_from_high > -5:
+        return 20, [f"接近年度高点 {distance_from_high:+.1f}%"]
+    elif distance_from_high > -15:
+        return 10, [f"中高位置 {distance_from_high:+.1f}%"]
+    elif distance_from_high < -50:
+        return -15, [f"✅ 低位机会 {distance_from_high:+.1f}%"]  # Negative = bonus
+    else:
+        return 0, []
+
+def detect_volume_divergence(historical_data, window=5):
+    """
+    Detect volume divergence
+    Returns: 'BEARISH_DIV' (price up, volume down) or 'BULLISH_DIV' or None
+    """
+    if len(historical_data) < window * 2:
+        return None
+    
+    # Recent window
+    recent_prices = [float(p.close) for p in historical_data[:window]]
+    recent_volumes = [float(p.volume) if p.volume else 0 for p in historical_data[:window]]
+    
+    # Past window
+    past_prices = [float(p.close) for p in historical_data[window:window*2]]
+    past_volumes = [float(p.volume) if p.volume else 0 for p in historical_data[window:window*2]]
+    
+    if not recent_prices or not past_prices:
+        return None
+    
+    recent_price_avg = sum(recent_prices) / len(recent_prices)
+    recent_volume_avg = sum(recent_volumes) / len(recent_volumes) if sum(recent_volumes) > 0 else 0
+    
+    past_price_avg = sum(past_prices) / len(past_prices)
+    past_volume_avg = sum(past_volumes) / len(past_volumes) if sum(past_volumes) > 0 else 0
+    
+    if past_price_avg == 0 or past_volume_avg == 0:
+        return None
+    
+    price_change = (recent_price_avg - past_price_avg) / past_price_avg
+    volume_change = (recent_volume_avg - past_volume_avg) / past_volume_avg
+    
+    # Bearish divergence: price up >5%, volume down >20%
+    if price_change > 0.05 and volume_change < -0.2:
+        return 'BEARISH_DIV'
+    
+    # Bullish divergence: price down >5%, volume down >20%
+    elif price_change < -0.05 and volume_change < -0.2:
+        return 'BULLISH_DIV'
+    
+    return None
+
+# ========================================
+# Strategy Functions
+# ========================================
+
+def generate_trend_following_signal(symbol, interval, latest_price, indicator, regime, historical_data):
+    """
+    Strategy 1: EMA Channel Breakout (Trend Following) with Multi-Dimensional Analysis
+    - Prevents chasing tops and bottoms
+    - Buy: Price breaks above EMA High (with safety checks)
     - Sell: Price breaks below EMA Low or back into channel
     """
     ema_high = float(indicator.ema_high_33) if indicator.ema_high_33 else None
@@ -31,38 +208,99 @@ def generate_trend_following_signal(symbol, interval, latest_price, indicator, r
         return None
     
     close_price = float(latest_price)
+    rsi = float(indicator.rsi) if indicator.rsi else None
     
-    # Calculate confidence based on multiple factors
-    confidence = 50  # Base confidence
+    # === Multi-Dimensional Analysis ===
+    channel_position = calculate_channel_position(close_price, ema_low, ema_high)
+    deviation = calculate_deviation(close_price, ema_high)
+    gain_10d = calculate_recent_gain(close_price, historical_data, 10)
+    gain_20d = calculate_recent_gain(close_price, historical_data, 20)
+    historical_pos = calculate_historical_position(close_price, historical_data, 365)
+    volume_div = detect_volume_divergence(historical_data, 5)
+    
+    # Base confidence and warnings
+    confidence = 50
     trigger_reasons = []
     
-    # Buy signal: Price above EMA High
+    # ========================================
+    # BUY SIGNAL: Price above EMA High
+    # ========================================
     if close_price > ema_high:
         signal_type = 'buy'
-        trigger_reasons.append(f"Price ${close_price:.2f} above EMA High ${ema_high:.2f}")
+        trigger_reasons.append(f"突破EMA High ${ema_high:.2f}")
         
-        # Higher confidence if in trending market
+        # 1. Channel Position Analysis (HIGHEST WEIGHT)
+        if channel_position is not None:
+            if channel_position > 200:
+                confidence -= 40
+                trigger_reasons.append(f"⚠️ 极度超买：通道位置 {channel_position:.0f}%")
+            elif channel_position > 150:
+                confidence -= 30
+                trigger_reasons.append(f"⚠️ 严重超买：通道位置 {channel_position:.0f}%")
+            elif channel_position > 100:
+                confidence -= 20
+                trigger_reasons.append(f"⚠️ 突破通道：位置 {channel_position:.0f}%")
+            elif channel_position > 80:
+                confidence -= 10
+        
+        # 2. Deviation from EMA High
+        deviation_penalty = get_deviation_penalty(deviation)
+        confidence -= deviation_penalty
+        if deviation and deviation > 0:
+            trigger_reasons.append(f"乖离率 {deviation:+.1f}%")
+        
+        # 3. RSI Overbought Check
+        if rsi is not None:
+            if rsi > 80:
+                confidence -= 25
+                trigger_reasons.append(f"⚠️ RSI极度超买 {rsi:.1f}")
+            elif rsi > 70:
+                confidence -= 15
+                trigger_reasons.append(f"⚠️ RSI超买 {rsi:.1f}")
+            elif rsi < 60:
+                confidence += 10
+                trigger_reasons.append(f"✅ RSI健康 {rsi:.1f}")
+        
+        # 4. Recent Gain Check
+        gain_penalty, gain_warnings = get_gain_penalty(gain_10d, gain_20d)
+        confidence -= gain_penalty
+        trigger_reasons.extend(gain_warnings)
+        
+        # 5. Historical Position Check
+        if historical_pos:
+            hist_penalty, hist_warnings = get_historical_penalty(historical_pos['distance_from_high'])
+            confidence -= hist_penalty
+            trigger_reasons.extend(hist_warnings)
+        
+        # 6. Volume Divergence
+        if volume_div == 'BEARISH_DIV':
+            confidence -= 15
+            trigger_reasons.append("⚠️ 顶背离：价涨量缩")
+        
+        # 7. Trend Confirmation
         if regime.regime_type == 'trending':
             confidence += 15
-            trigger_reasons.append("Strong trending market (ADX)")
+            trigger_reasons.append("✅ 趋势市场")
         
-        # Check volume confirmation
+        # 8. Volume Confirmation
         if regime.volume_ratio and regime.volume_ratio > 1.2:
             confidence += 10
-            trigger_reasons.append(f"Volume increased {regime.volume_ratio:.1f}x")
+            trigger_reasons.append(f"✅ 成交量 {regime.volume_ratio:.1f}x")
         
-        # Check MACD confirmation
+        # 9. MACD Confirmation
         if indicator.macd and indicator.signal_line:
             if float(indicator.macd) > float(indicator.signal_line):
                 confidence += 10
-                trigger_reasons.append("MACD golden cross")
+                trigger_reasons.append("✅ MACD金叉")
         
-        # Check RSI (not overbought)
-        if indicator.rsi and float(indicator.rsi) < 70:
-            confidence += 5
-        elif indicator.rsi and float(indicator.rsi) > 75:
-            confidence -= 10
-            trigger_reasons.append(f"Warning: RSI overbought ({float(indicator.rsi):.1f})")
+        # Adjust signal type based on final confidence
+        confidence = max(0, min(100, confidence))
+        
+        if confidence < 30:
+            signal_type = 'hold'  # Too risky, don't chase
+            trigger_reasons.insert(0, "❌ 追高风险过大")
+        elif confidence < 50:
+            trigger_reasons.insert(0, "⚠️ 谨慎小仓")
         
         # Stop loss at EMA Low
         stop_loss = Decimal(str(ema_low))
@@ -71,34 +309,63 @@ def generate_trend_following_signal(symbol, interval, latest_price, indicator, r
         return {
             'signal_type': signal_type,
             'strategy': 'trend_follow',
-            'confidence': min(max(confidence, 0), 100),
+            'confidence': confidence,
             'entry_price': Decimal(str(close_price)),
             'stop_loss': stop_loss,
-            'take_profit': None,  # Trend following: no fixed target
+            'take_profit': None,
             'risk_pct': round(risk_pct, 2),
             'reward_pct': None,
             'trigger_reason': ' | '.join(trigger_reasons),
+            'channel_position': channel_position,
+            'deviation': deviation,
         }
     
-    # Sell signal: Price below EMA Low
+    # ========================================
+    # SELL SIGNAL: Price below EMA Low
+    # ========================================
     elif close_price < ema_low:
         signal_type = 'sell'
-        trigger_reasons.append(f"Price ${close_price:.2f} below EMA Low ${ema_low:.2f}")
+        trigger_reasons.append(f"跌破EMA Low ${ema_low:.2f}")
         
+        # For sell signals, apply reverse logic
+        # Avoid panic selling at bottoms
+        if channel_position is not None and channel_position < 0:
+            # Price is below channel - might be oversold
+            confidence -= 20
+            trigger_reasons.append(f"⚠️ 超卖：通道位置 {channel_position:.0f}%")
+        
+        if rsi is not None and rsi < 30:
+            confidence -= 15
+            trigger_reasons.append(f"⚠️ RSI超卖 {rsi:.1f}")
+        elif rsi is not None and rsi < 40:
+            confidence -= 10
+        
+        # Downtrend confirmation
         if regime.regime_type == 'trending' and regime.trend_direction == 'down':
             confidence += 15
-            trigger_reasons.append("Strong downtrend (ADX)")
+            trigger_reasons.append("✅ 下跌趋势")
         
-        # Check volume
+        # Volume confirmation
         if regime.volume_ratio and regime.volume_ratio > 1.2:
             confidence += 10
-            trigger_reasons.append(f"Volume increased {regime.volume_ratio:.1f}x")
+            trigger_reasons.append(f"✅ 成交量 {regime.volume_ratio:.1f}x")
         
-        # Check MACD
+        # MACD confirmation
         if indicator.macd and indicator.signal_line:
             if float(indicator.macd) < float(indicator.signal_line):
                 confidence += 10
-                trigger_reasons.append("MACD death cross")
+                trigger_reasons.append("✅ MACD死叉")
+        
+        # Volume divergence
+        if volume_div == 'BULLISH_DIV':
+            confidence -= 15
+            trigger_reasons.append("⚠️ 底背离：不要杀跌")
+        
+        confidence = max(0, min(100, confidence))
+        
+        if confidence < 30:
+            signal_type = 'hold'
+            trigger_reasons.insert(0, "❌ 杀跌风险过大")
         
         # Stop loss at EMA High
         stop_loss = Decimal(str(ema_high))
@@ -107,20 +374,22 @@ def generate_trend_following_signal(symbol, interval, latest_price, indicator, r
         return {
             'signal_type': signal_type,
             'strategy': 'trend_follow',
-            'confidence': min(max(confidence, 0), 100),
+            'confidence': confidence,
             'entry_price': Decimal(str(close_price)),
             'stop_loss': stop_loss,
             'take_profit': None,
             'risk_pct': round(risk_pct, 2),
             'reward_pct': None,
             'trigger_reason': ' | '.join(trigger_reasons),
+            'channel_position': channel_position,
+            'deviation': deviation,
         }
     
     return None
 
-def generate_mean_reversion_signal(symbol, interval, latest_price, indicator, regime):
+def generate_mean_reversion_signal(symbol, interval, latest_price, indicator, regime, historical_data):
     """
-    Strategy 2: Mean Reversion (for ranging markets)
+    Strategy 2: Mean Reversion (for ranging markets) with Multi-Dimensional Analysis
     - Buy: Price near EMA Low in ranging market
     - Sell: Price near EMA High in ranging market
     """
@@ -133,10 +402,14 @@ def generate_mean_reversion_signal(symbol, interval, latest_price, indicator, re
     close_price = float(latest_price)
     channel_mid = (ema_high + ema_low) / 2
     channel_width = ema_high - ema_low
+    rsi = float(indicator.rsi) if indicator.rsi else None
     
     # Only generate signals in ranging markets
     if regime.regime_type != 'ranging':
         return None
+    
+    # Multi-dimensional analysis
+    channel_position = calculate_channel_position(close_price, ema_low, ema_high)
     
     confidence = 45  # Base confidence (lower than trend following)
     trigger_reasons = []
@@ -148,13 +421,19 @@ def generate_mean_reversion_signal(symbol, interval, latest_price, indicator, re
     # Buy signal: Price near EMA Low (within 10% of channel width)
     if distance_to_low < (channel_width * 0.1):
         signal_type = 'buy'
-        trigger_reasons.append(f"Price ${close_price:.2f} near EMA Low ${ema_low:.2f}")
-        trigger_reasons.append("Ranging market - mean reversion expected")
+        trigger_reasons.append(f"震荡市 - 接近EMA Low ${ema_low:.2f}")
+        
+        # Channel position bonus (lower = better for buy)
+        if channel_position is not None and channel_position < 30:
+            confidence += 15
+            trigger_reasons.append(f"✅ 通道底部 {channel_position:.0f}%")
         
         # Check RSI oversold
-        if indicator.rsi and float(indicator.rsi) < 35:
+        if rsi and rsi < 35:
             confidence += 20
-            trigger_reasons.append(f"RSI oversold ({float(indicator.rsi):.1f})")
+            trigger_reasons.append(f"✅ RSI超卖 {rsi:.1f}")
+        elif rsi and rsi < 45:
+            confidence += 10
         
         # Target is channel mid or high
         take_profit = Decimal(str(channel_mid))
@@ -173,18 +452,25 @@ def generate_mean_reversion_signal(symbol, interval, latest_price, indicator, re
             'risk_pct': round(risk_pct, 2),
             'reward_pct': round(reward_pct, 2),
             'trigger_reason': ' | '.join(trigger_reasons),
+            'channel_position': channel_position,
         }
     
     # Sell signal: Price near EMA High
     elif distance_to_high < (channel_width * 0.1):
         signal_type = 'sell'
-        trigger_reasons.append(f"Price ${close_price:.2f} near EMA High ${ema_high:.2f}")
-        trigger_reasons.append("Ranging market - mean reversion expected")
+        trigger_reasons.append(f"震荡市 - 接近EMA High ${ema_high:.2f}")
+        
+        # Channel position check (higher = better for sell)
+        if channel_position is not None and channel_position > 70:
+            confidence += 15
+            trigger_reasons.append(f"✅ 通道顶部 {channel_position:.0f}%")
         
         # Check RSI overbought
-        if indicator.rsi and float(indicator.rsi) > 65:
+        if rsi and rsi > 65:
             confidence += 20
-            trigger_reasons.append(f"RSI overbought ({float(indicator.rsi):.1f})")
+            trigger_reasons.append(f"✅ RSI超买 {rsi:.1f}")
+        elif rsi and rsi > 55:
+            confidence += 10
         
         take_profit = Decimal(str(channel_mid))
         stop_loss = Decimal(str(ema_high * 1.02))  # 2% above EMA High
@@ -202,6 +488,7 @@ def generate_mean_reversion_signal(symbol, interval, latest_price, indicator, re
             'risk_pct': round(risk_pct, 2),
             'reward_pct': round(reward_pct, 2),
             'trigger_reason': ' | '.join(trigger_reasons),
+            'channel_position': channel_position,
         }
     
     return None
@@ -221,6 +508,16 @@ def generate_signal_for_symbol(symbol, interval=86400):
     
     if not latest_ohlc:
         print(f"  ❌ No OHLC data found")
+        return
+    
+    # Get historical data (last 400 periods for analysis)
+    historical_data = list(OhlcPrice.objects.filter(
+        symbol=symbol,
+        interval=interval
+    ).order_by('-date')[:400])
+    
+    if len(historical_data) < 30:
+        print(f"  ❌ Insufficient historical data ({len(historical_data)} periods)")
         return
     
     # Get latest indicator
@@ -247,14 +544,14 @@ def generate_signal_for_symbol(symbol, interval=86400):
     signal_data = None
     
     if latest_regime.regime_type == 'trending':
-        # Use trend following strategy
+        # Use trend following strategy with multi-dimensional analysis
         signal_data = generate_trend_following_signal(
-            symbol, interval, latest_ohlc.close, latest_indicator, latest_regime
+            symbol, interval, latest_ohlc.close, latest_indicator, latest_regime, historical_data
         )
     else:
         # Use mean reversion strategy
         signal_data = generate_mean_reversion_signal(
-            symbol, interval, latest_ohlc.close, latest_indicator, latest_regime
+            symbol, interval, latest_ohlc.close, latest_indicator, latest_regime, historical_data
         )
     
     # If no signal generated, create a "hold" signal
@@ -272,12 +569,19 @@ def generate_signal_for_symbol(symbol, interval=86400):
             'trigger_reason': f"Price in channel ({latest_regime.regime_type} market)",
         }
     else:
-        emoji = "✅" if signal_data['signal_type'] == 'buy' else "🔴"
+        emoji = "✅" if signal_data['signal_type'] == 'buy' else "🔴" if signal_data['signal_type'] == 'sell' else "⏸️"
         print(f"  {emoji} {signal_data['signal_type'].upper()} - Confidence: {signal_data['confidence']}%")
         print(f"     Strategy: {signal_data['strategy']}")
         print(f"     Entry: ${signal_data['entry_price']}")
         if signal_data['stop_loss']:
             print(f"     Stop Loss: ${signal_data['stop_loss']} (-{signal_data['risk_pct']}%)")
+        # Print trigger reasons for detailed analysis
+        if signal_data.get('trigger_reason'):
+            reasons = signal_data['trigger_reason'].split(' | ')
+            if len(reasons) > 2:  # Only print if there are multiple reasons
+                print(f"     Reasons:")
+                for reason in reasons[:5]:  # Show first 5 reasons
+                    print(f"       • {reason}")
     
     # Save signal to database
     timestamp = latest_ohlc.date
