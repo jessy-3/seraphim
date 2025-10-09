@@ -1,0 +1,14 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" type="text/css" href="{% static 'admin_custom.css' %}">
+{% endblock %}
+
+{% block title %}{% if subtitle %}{{ subtitle}} | {% endif %}{{ title }} | Seraphim Trading{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">Seraphim Trading System</a></h1>
+{% endblock %}
+

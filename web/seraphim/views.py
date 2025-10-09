@@ -3,6 +3,8 @@ from django.views import View
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.utils.safestring import mark_safe
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from api.wsclient import ws_client
 from api.models import SymbolInfo, OhlcPrice, Indicator, MarketRegime, TradingSignal
 from api.providers.kraken_provider import get_kraken_provider
@@ -436,6 +438,7 @@ class TradingSignalDetailView(View):
         return JsonResponse(data)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class ManualDataUpdateView(View):
     """
     Manual trigger for data updates
