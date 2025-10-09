@@ -300,9 +300,9 @@
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ symbol.name }}</p>
-                            <p class="text-2xl font-bold text-gray-900 dark:text-white" x-text="formatPrice('{{ symbol.name }}', livePrice['{{ symbol.name }}'] || '{{ symbol.price|floatformat:2 }}')">
+                            <p class="text-2xl font-bold text-gray-900 dark:text-white" x-text="formatPrice('{{ symbol.name }}', livePrice['{{ symbol.name }}'] || {{ symbol.price|default:'null' }})">
                                 {% if symbol.price %}
-                                    {% if symbol.name|slice:'-4:' == '/USD' or symbol.name == 'XAUUSD' or symbol.name == 'IAU' or symbol.name == 'TSLA' %}${% endif %}{{ symbol.price|floatformat:2 }}{% if symbol.name|slice:'-4:' == '/BTC' %} ₿{% endif %}
+                                    {{ symbol.price }}
                                 {% else %}
                                     --
                                 {% endif %}
@@ -504,6 +504,8 @@
                 socket: null,
                 // Symbol configuration (counter_decimals for price formatting)
                 symbolsConfig: {{ symbols_config }},
+                // Initial prices from server (with full precision)
+                initialPrices: {{ initial_prices }},
 
             init() {
                 this.initWebSocket();
@@ -513,12 +515,12 @@
             },
 
             async loadInitialPrices() {
-                // Load prices from server-side data  
-                {% for symbol in symbols_with_prices %}
-                {% if symbol.price %}
-                this.livePrice['{{ symbol.name }}'] = this.formatPrice('{{ symbol.name }}', '{{ symbol.price|floatformat:2 }}');
-                {% endif %}
-                {% endfor %}
+                // Load prices from server-side data (using initialPrices to preserve precision)
+                for (const [symbol, priceStr] of Object.entries(this.initialPrices)) {
+                    const price = parseFloat(priceStr);
+                    this.livePrice[symbol] = this.formatPrice(symbol, price);
+                    console.log(`[Initial] ${symbol}: ${priceStr} → ${this.livePrice[symbol]}`);
+                }
             },
 
                 initWebSocket() {
@@ -568,18 +570,28 @@
                         // Handle live_trades_btcusd format
                         if (data.channel.startsWith('live_trades_')) {
                             const pairCode = data.channel.replace('live_trades_', '').toUpperCase();
-                            // Convert btcusd to BTC/USD
+                            // Convert pair codes to standard format
                             let symbol;
-                            if (pairCode.length === 6) {
-                                symbol = pairCode.substr(0, 3) + '/' + pairCode.substr(3, 3);
-                            } else if (pairCode === 'ETHBTC') {
-                                symbol = 'ETH/BTC';
-                            } else {
-                                symbol = pairCode;
-                            }
+                            
+                            // Map of special cases
+                            const symbolMap = {
+                                'BTCUSD': 'BTC/USD',
+                                'ETHUSD': 'ETH/USD',
+                                'ETHBTC': 'ETH/BTC',
+                                'XRPUSD': 'XRP/USD',
+                                'LTCUSD': 'LTC/USD',
+                                'BCHUSD': 'BCH/USD',
+                                'DOGEUSD': 'DOGE/USD',
+                                'LINKUSD': 'LINK/USD',
+                                'SOLUSD': 'SOL/USD'
+                            };
+                            
+                            symbol = symbolMap[pairCode] || pairCode;
                             
                             const price = parseFloat(data.data.price_str || data.data.price);
-                            this.livePrice[symbol] = this.formatPrice(symbol, price);
+                            const formatted = this.formatPrice(symbol, price);
+                            console.log(`[WebSocket] ${pairCode} → ${symbol}: ${price} → ${formatted}`);
+                            this.livePrice[symbol] = formatted;
                         }
                     }
                 },

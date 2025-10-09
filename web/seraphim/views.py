@@ -67,15 +67,16 @@ class DashboardView(View):
                 live_ticker = kraken_provider.get_ticker(kraken_pairs)
                 logger.info(f"Retrieved live data for {len(live_ticker)} pairs from Kraken")
                 
-                # Convert to our format
+                # Convert to our format (keep string precision for prices)
+                from decimal import Decimal
                 for symbol_name, kraken_pair in kraken_symbol_map.items():
                     if kraken_pair in live_ticker:
                         ticker_data = live_ticker[kraken_pair]
                         kraken_live_data[symbol_name] = {
-                            'price': float(ticker_data['c'][0]),
-                            'bid': float(ticker_data['b'][0]),
-                            'ask': float(ticker_data['a'][0]),
-                            'volume_24h': float(ticker_data['v'][1]),
+                            'price': Decimal(ticker_data['c'][0]),  # Keep full precision
+                            'bid': Decimal(ticker_data['b'][0]),
+                            'ask': Decimal(ticker_data['a'][0]),
+                            'volume_24h': Decimal(ticker_data['v'][1]),
                             'source': 'Kraken Live'
                         }
                         
@@ -150,16 +151,23 @@ class DashboardView(View):
                 'price_source': 'none'
             }
             
-            # Priority 1: Kraken live data (crypto)
+            # Priority 1: For crypto, use database OHLC (full precision), but show Kraken Live badge
+            # WebSocket will update to real-time prices immediately after page load
             if symbol.name in kraken_live_data:
-                kraken_data = kraken_live_data[symbol.name]
-                symbol_data.update({
-                    'price': kraken_data['price'],
-                    'price_source': 'Kraken Live',
-                    'bid': kraken_data.get('bid'),
-                    'ask': kraken_data.get('ask'),
-                    'volume_24h': kraken_data.get('volume_24h')
-                })
+                # Use database OHLC close for initial display (preserves full decimal precision)
+                latest_ohlc = OhlcPrice.objects.filter(symbol=symbol.name).order_by('-date').first()
+                if latest_ohlc and latest_ohlc.close:
+                    symbol_data.update({
+                        'price': latest_ohlc.close,  # Use DB for full precision
+                        'price_source': 'Kraken Live',  # Show Kraken Live badge (WebSocket is active)
+                    })
+                else:
+                    # Fallback to Kraken ticker if no DB data
+                    kraken_data = kraken_live_data[symbol.name]
+                    symbol_data.update({
+                        'price': kraken_data['price'],
+                        'price_source': 'Kraken Live',
+                    })
             
             # Priority 2: IBKR live data (stocks)
             elif symbol.name in ibkr_stock_data:
@@ -179,20 +187,35 @@ class DashboardView(View):
                 symbol_data['price_source'] = price_info.get('source', 'live')
                 symbol_data['timestamp'] = price_info.get('timestamp', '')
             
+            # If still no price, use latest OHLC close from database (highest precision)
+            if symbol_data['price'] is None or symbol_data['price'] == 0:
+                latest_ohlc = OhlcPrice.objects.filter(symbol=symbol.name).order_by('-date').first()
+                if latest_ohlc and latest_ohlc.close:
+                    symbol_data['price'] = latest_ohlc.close
+                    symbol_data['price_source'] = 'database (latest OHLC)'
+            
             symbols_with_prices.append(symbol_data)
 
         # Create symbol config for frontend (counter_decimals for price formatting)
         symbols_config = {}
+        initial_prices = {}
         for symbol in symbols:
             symbols_config[symbol.name] = {
                 'counter_decimals': symbol.counter_decimals,
                 'base_decimals': symbol.base_decimals
             }
+            # Prepare initial prices as strings to preserve precision
+            for sym_data in symbols_with_prices:
+                if sym_data['name'] == symbol.name and sym_data['price'] is not None:
+                    # Convert to string to preserve full precision in JSON
+                    initial_prices[symbol.name] = str(sym_data['price'])
+                    break
         
         context = {
             'symbols': symbols,
             'symbols_with_prices': symbols_with_prices,
             'symbols_config': mark_safe(json.dumps(symbols_config)),  # Serialize to JSON for frontend
+            'initial_prices': mark_safe(json.dumps(initial_prices)),  # Serialize prices to preserve precision
             'live_prices': live_prices,
             'kraken_integration': True,
             'kraken_live_count': len(kraken_live_data),
