@@ -44,6 +44,44 @@ def calculate_macd(data, fast=12, slow=26, signal=9):
     histogram = macd_line - signal_line
     return macd_line, signal_line, histogram
 
+def calculate_adx(high, low, close, window=14):
+    """
+    Average Directional Index (ADX) - measures trend strength
+    Returns: ADX values (0-100, typically >25 indicates strong trend)
+    """
+    # Calculate +DM and -DM
+    high_diff = high.diff()
+    low_diff = -low.diff()
+    
+    plus_dm = high_diff.copy()
+    minus_dm = low_diff.copy()
+    
+    # Set conditions for +DM and -DM
+    plus_dm[plus_dm < 0] = 0
+    plus_dm[(high_diff < low_diff)] = 0
+    
+    minus_dm[minus_dm < 0] = 0
+    minus_dm[(low_diff < high_diff)] = 0
+    
+    # Calculate True Range (TR)
+    tr1 = high - low
+    tr2 = abs(high - close.shift(1))
+    tr3 = abs(low - close.shift(1))
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    # Smooth the TR, +DM, -DM using Wilder's smoothing (similar to EMA)
+    atr = tr.ewm(alpha=1/window, adjust=False).mean()
+    plus_di = 100 * (plus_dm.ewm(alpha=1/window, adjust=False).mean() / atr)
+    minus_di = 100 * (minus_dm.ewm(alpha=1/window, adjust=False).mean() / atr)
+    
+    # Calculate DX
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+    
+    # Calculate ADX (smoothed DX)
+    adx = dx.ewm(alpha=1/window, adjust=False).mean()
+    
+    return adx
+
 def calculate_indicators_for_symbol(symbol, interval=86400, limit=100):
     """Calculate indicators for a specific symbol and interval"""
     
@@ -95,6 +133,9 @@ def calculate_indicators_for_symbol(symbol, interval=86400, limit=100):
     df['macd_signal'] = signal
     df['macd_histogram'] = histogram
     
+    # Calculate ADX for trend strength
+    df['adx'] = calculate_adx(df['high'], df['low'], df['close'], window=14)
+    
     # Remove rows with NaN values (insufficient data for calculation)
     df = df.dropna()
     
@@ -134,6 +175,7 @@ def calculate_indicators_for_symbol(symbol, interval=86400, limit=100):
             upper_ema=round(float(row['ema_26']), price_decimals) if not pd.isna(row['ema_26']) else None,
             macd=round(float(row['macd']), price_decimals + 2) if not pd.isna(row['macd']) else None,  # MACD needs more precision
             rsi=round(float(row['rsi']), 2) if not pd.isna(row['rsi']) else None,  # RSI is always 0-100, 2 decimals is fine
+            adx=round(float(row['adx']), 2) if not pd.isna(row['adx']) else None,  # ADX is 0-100, 2 decimals is fine
         )
         indicators_to_create.append(indicator)
     

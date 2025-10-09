@@ -359,6 +359,211 @@
             </div>
         </div>
 
+        <!-- Market Regime & Trading Signals -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <!-- Market Regime (Left Panel) -->
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+                    市场状态 - <span x-text="selectedSymbol">BTC/USD</span>
+                </h3>
+                
+                <!-- Market Type Indicator -->
+                <div class="mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm text-gray-600 dark:text-gray-400">当前状态</span>
+                        <span class="px-3 py-1 rounded-full text-sm font-medium"
+                              :class="marketRegime.regime_type === 'trending' ? 
+                                'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' : 
+                                'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'"
+                              x-text="marketRegime.regime_type === 'trending' ? '📊 趋势市场' : '📈 震荡市场'">
+                            --
+                        </span>
+                    </div>
+                    
+                    <!-- ADX Indicator -->
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm text-gray-600 dark:text-gray-400">趋势强度 (ADX)</span>
+                        <div class="flex items-center">
+                            <div class="w-32 h-2 bg-gray-200 dark:bg-gray-600 rounded-full mr-2">
+                                <div class="h-2 bg-purple-600 rounded-full transition-all duration-300"
+                                     :style="`width: ${Math.min((marketRegime.adx || 0), 100)}%`"></div>
+                            </div>
+                            <span class="text-sm font-bold" x-text="marketRegime.adx ? marketRegime.adx.toFixed(1) : '--'">--</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Channel Stats -->
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm text-gray-600 dark:text-gray-400">轨道内时间</span>
+                        <span class="text-sm font-mono" x-text="marketRegime.channel_in_pct ? marketRegime.channel_in_pct.toFixed(0) + '%' : '--'">--</span>
+                    </div>
+                </div>
+                
+                <!-- Multi-timeframe Analysis -->
+                <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">多周期分析</h4>
+                    <div class="space-y-2">
+                        <template x-if="marketRegime.higher_timeframe">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs text-gray-600 dark:text-gray-400" 
+                                      x-text="marketRegime.higher_timeframe ? (marketRegime.higher_timeframe.interval === 604800 ? '1W' : marketRegime.higher_timeframe.interval === 86400 ? '1D' : '4H') : '--'">
+                                    --
+                                </span>
+                                <span class="text-xs px-2 py-1 rounded"
+                                      :class="marketRegime.higher_timeframe && marketRegime.higher_timeframe.trend_direction === 'up' ? 
+                                        'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
+                                        marketRegime.higher_timeframe && marketRegime.higher_timeframe.trend_direction === 'down' ? 
+                                        'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 
+                                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'"
+                                      x-text="marketRegime.higher_timeframe ? (marketRegime.higher_timeframe.trend_direction === 'up' ? '📈 上升趋势' : marketRegime.higher_timeframe.trend_direction === 'down' ? '📉 下降趋势' : '➡️ 震荡') : '--'">
+                                    --
+                                </span>
+                            </div>
+                        </template>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-gray-600 dark:text-gray-400"
+                                  x-text="selectedInterval === '3600' ? '1H' : selectedInterval === '14400' ? '4H' : selectedInterval === '86400' ? '1D' : '1W'">
+                                --
+                            </span>
+                            <span class="text-xs px-2 py-1 rounded"
+                                  :class="marketRegime.trend_direction === 'up' ? 
+                                    'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
+                                    marketRegime.trend_direction === 'down' ? 
+                                    'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 
+                                    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'"
+                                  x-text="marketRegime.trend_direction === 'up' ? '📈 上升' : marketRegime.trend_direction === 'down' ? '📉 下降' : '➡️ 震荡'">
+                                --
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Current Trading Signal (Span 2 columns) -->
+            <div class="lg:col-span-2">
+                <template x-if="currentSignal && currentSignal.signal_type !== 'hold'">
+                    <div class="rounded-lg shadow-lg p-6 border-l-4"
+                         :class="currentSignal.signal_type === 'buy' ? 
+                           'bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900 dark:to-green-800 border-green-500' : 
+                           'bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900 dark:to-red-800 border-red-500'">
+                        <div class="flex items-start justify-between mb-4">
+                            <div>
+                                <div class="flex items-center mb-2">
+                                    <span class="text-3xl mr-2" x-text="currentSignal.signal_type === 'buy' ? '✅' : '🔴'">✅</span>
+                                    <h3 class="text-xl font-bold"
+                                        :class="currentSignal.signal_type === 'buy' ? 
+                                          'text-green-800 dark:text-green-100' : 
+                                          'text-red-800 dark:text-red-100'"
+                                        x-text="currentSignal.signal_type === 'buy' ? '买入信号' : '卖出信号'">
+                                        信号
+                                    </h3>
+                                </div>
+                                <p class="text-sm"
+                                   :class="currentSignal.signal_type === 'buy' ? 
+                                     'text-green-700 dark:text-green-200' : 
+                                     'text-red-700 dark:text-red-200'">
+                                    <span x-text="currentSignal.symbol">BTC/USD</span> @ 
+                                    <span x-text="currentSignal.interval === 3600 ? '1H' : currentSignal.interval === 14400 ? '4H' : currentSignal.interval === 86400 ? '1D' : '1W'">1D</span>
+                                    · <span x-text="new Date(currentSignal.timestamp).toLocaleString('zh-CN')">--</span>
+                                </p>
+                            </div>
+                            
+                            <!-- Confidence -->
+                            <div class="text-right">
+                                <div class="text-2xl font-bold"
+                                     :class="currentSignal.signal_type === 'buy' ? 
+                                       'text-green-800 dark:text-green-100' : 
+                                       'text-red-800 dark:text-red-100'"
+                                     x-text="currentSignal.confidence ? currentSignal.confidence.toFixed(0) + '%' : '--'">
+                                    --
+                                </div>
+                                <div class="text-xs"
+                                     :class="currentSignal.signal_type === 'buy' ? 
+                                       'text-green-700 dark:text-green-300' : 
+                                       'text-red-700 dark:text-red-300'">
+                                    置信度
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Strategy Details -->
+                        <div class="bg-white dark:bg-gray-700 rounded p-4 mb-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">策略类型</div>
+                                    <div class="text-sm font-semibold text-gray-900 dark:text-white"
+                                         x-text="currentSignal.strategy === 'trend_follow' ? '📈 趋势跟随' : currentSignal.strategy === 'mean_reversion' ? '↔️ 均值回归' : currentSignal.strategy">
+                                        --
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">入场价格</div>
+                                    <div class="text-sm font-semibold"
+                                         :class="currentSignal.signal_type === 'buy' ? 'text-green-600' : 'text-red-600'"
+                                         x-text="currentSignal.entry_price ? '$' + currentSignal.entry_price.toFixed(2) : '--'">
+                                        --
+                                    </div>
+                                </div>
+                                <template x-if="currentSignal.stop_loss">
+                                    <div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">止损价格</div>
+                                        <div class="text-sm font-semibold text-red-600"
+                                             x-text="'$' + currentSignal.stop_loss.toFixed(2) + ' (' + (currentSignal.risk_pct ? currentSignal.risk_pct.toFixed(1) + '%' : '') + ')'">
+                                            --
+                                        </div>
+                                    </div>
+                                </template>
+                                <template x-if="currentSignal.take_profit">
+                                    <div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">目标价格</div>
+                                        <div class="text-sm font-semibold text-green-600"
+                                             x-text="'$' + currentSignal.take_profit.toFixed(2) + ' (+' + (currentSignal.reward_pct ? currentSignal.reward_pct.toFixed(1) + '%' : '') + ')'">
+                                            --
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                        
+                        <!-- Supporting Indicators -->
+                        <div class="mb-4">
+                            <div class="text-xs text-gray-600 dark:text-gray-300 mb-2">触发原因：</div>
+                            <div class="text-xs text-gray-700 dark:text-gray-200" x-text="currentSignal.trigger_reason">--</div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex gap-2">
+                            <button class="flex-1 px-4 py-2 rounded text-sm font-medium text-white"
+                                    :class="currentSignal.signal_type === 'buy' ? 
+                                      'bg-green-600 hover:bg-green-700' : 
+                                      'bg-red-600 hover:bg-red-700'">
+                                查看详情
+                            </button>
+                            <button class="px-4 py-2 border rounded text-sm hover:bg-gray-50 dark:hover:bg-gray-600"
+                                    :class="currentSignal.signal_type === 'buy' ? 
+                                      'border-green-600 text-green-600 dark:text-green-400' : 
+                                      'border-red-600 text-red-600 dark:text-red-400'">
+                                设置提醒
+                            </button>
+                        </div>
+                    </div>
+                </template>
+                
+                <!-- Hold Signal -->
+                <template x-if="!currentSignal || currentSignal.signal_type === 'hold'">
+                    <div class="bg-gray-100 dark:bg-gray-700 rounded-lg shadow p-6 border border-gray-300 dark:border-gray-600">
+                        <div class="text-center">
+                            <span class="text-4xl mb-2 block">⏸️</span>
+                            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">观望</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                                当前无明确交易信号，建议等待更清晰的市场信号
+                            </p>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
         <!-- Trading Charts -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <!-- Price Chart -->
@@ -502,6 +707,10 @@
                 priceChart: null,
                 volumeChart: null,
                 socket: null,
+                // Market regime and trading signals data
+                marketRegime: {},
+                currentSignal: null,
+                allSignals: [],
                 // Symbol configuration (counter_decimals for price formatting)
                 symbolsConfig: {{ symbols_config }},
                 // Initial prices from server (with full precision)
@@ -512,6 +721,8 @@
                 // V8: Chart initialization is in standalone script, but we trigger data load
                 this.loadChartData();  // Load initial chart and indicators
                 this.loadInitialPrices();
+                this.loadMarketRegime();  // Load market regime
+                this.loadTradingSignals();  // Load trading signals
             },
 
             async loadInitialPrices() {
@@ -714,8 +925,51 @@
                         if (typeof window.updatePriceChart === 'function') {
                             window.updatePriceChart(this.selectedSymbol, this.selectedInterval);
                         }
+                        
+                        // Also update market regime and trading signals when chart data changes
+                        this.loadMarketRegime();
+                        this.loadTradingSignals();
                     } catch (error) {
                         console.error('Error loading chart data:', error);
+                    }
+                },
+
+                async loadMarketRegime() {
+                    try {
+                        const response = await fetch(`/api/market-regime/?symbol=${this.selectedSymbol}&interval=${this.selectedInterval}`);
+                        const data = await response.json();
+                        
+                        if (!data.error) {
+                            this.marketRegime = data;
+                        } else {
+                            this.marketRegime = {};
+                        }
+                    } catch (error) {
+                        console.error('Error loading market regime:', error);
+                        this.marketRegime = {};
+                    }
+                },
+
+                async loadTradingSignals() {
+                    try {
+                        // Load current signal for selected symbol and interval
+                        const response = await fetch(`/api/trading-signals/?symbol=${this.selectedSymbol}&interval=${this.selectedInterval}&status=active&limit=1`);
+                        const data = await response.json();
+                        
+                        if (data.signals && data.signals.length > 0) {
+                            this.currentSignal = data.signals[0];
+                        } else {
+                            this.currentSignal = null;
+                        }
+                        
+                        // Load all active signals
+                        const allResponse = await fetch(`/api/trading-signals/?status=active&limit=50`);
+                        const allData = await allResponse.json();
+                        this.allSignals = allData.signals || [];
+                    } catch (error) {
+                        console.error('Error loading trading signals:', error);
+                        this.currentSignal = null;
+                        this.allSignals = [];
                     }
                 }
             }

@@ -99,6 +99,8 @@ class Indicator(models.Model):
     # EMA Channel (轨道当值) indicators
     ema_high_33 = models.DecimalField(max_digits=18, decimal_places=8, null=True)  # 上轨当值 (EMA of High prices, 33 periods)
     ema_low_33 = models.DecimalField(max_digits=18, decimal_places=8, null=True)   # 下轨当值 (EMA of Low prices, 33 periods)
+    # ADX for trend strength
+    adx = models.DecimalField(max_digits=18, decimal_places=8, null=True)  # Average Directional Index
 
     class Meta:
         db_table = 'qt_indicator'
@@ -199,3 +201,97 @@ class Portfolio(models.Model):
     market_id = models.IntegerField()  # 1 for Bitstamp, 2 for Kraken
     class Meta:
         db_table = 'tu_portfolio'
+
+
+class MarketRegime(models.Model):
+    """市场状态识别 - Market Regime Detection"""
+    unix = UnixDateTimeField()
+    timestamp = models.DateTimeField()
+    symbol = models.CharField(max_length=10)
+    interval = models.IntegerField()
+    
+    # Market regime type: 'trending' or 'ranging'
+    regime_type = models.CharField(max_length=20)
+    
+    # Trend direction: 'up', 'down', 'neutral'
+    trend_direction = models.CharField(max_length=10, null=True)
+    
+    # ADX value for trend strength
+    adx = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    
+    # Channel metrics
+    channel_in_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True)  # % of time inside channel (last 20 bars)
+    channel_width_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True)  # Channel width as % of price
+    
+    # Multi-timeframe trend
+    higher_tf_trend = models.CharField(max_length=10, null=True)  # Trend from higher timeframe
+    
+    # Volume metrics
+    volume_ratio = models.DecimalField(max_digits=5, decimal_places=2, null=True)  # Current volume vs 20-period average
+    
+    class Meta:
+        db_table = 'qt_market_regime'
+        unique_together = ('symbol', 'interval', 'unix')
+        indexes = [
+            models.Index(fields=['symbol', 'interval', 'timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"{self.symbol} {self.interval}s: {self.regime_type} ({self.trend_direction})"
+
+
+class TradingSignal(models.Model):
+    """交易信号 - Trading Signals"""
+    unix = UnixDateTimeField()
+    timestamp = models.DateTimeField()
+    symbol = models.CharField(max_length=10)
+    interval = models.IntegerField()
+    
+    # Signal type: 'buy', 'sell', 'hold'
+    signal_type = models.CharField(max_length=10)
+    
+    # Strategy used: 'trend_follow', 'mean_reversion', 'breakout', etc.
+    strategy = models.CharField(max_length=30)
+    
+    # Market regime when signal generated
+    market_regime = models.CharField(max_length=20)
+    
+    # Confidence score (0-100)
+    confidence = models.DecimalField(max_digits=5, decimal_places=2)
+    
+    # Price levels
+    entry_price = models.DecimalField(max_digits=18, decimal_places=8)
+    stop_loss = models.DecimalField(max_digits=18, decimal_places=8, null=True)
+    take_profit = models.DecimalField(max_digits=18, decimal_places=8, null=True)
+    
+    # Risk/Reward
+    risk_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True)  # Stop loss distance as %
+    reward_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True)  # Take profit distance as %
+    
+    # Supporting indicators
+    trigger_reason = models.TextField()  # Description of why signal was generated
+    rsi_value = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    macd_value = models.DecimalField(max_digits=18, decimal_places=8, null=True)
+    volume_ratio = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    
+    # Status tracking
+    status = models.CharField(max_length=20, default='active')  # active, closed, expired, cancelled
+    exit_price = models.DecimalField(max_digits=18, decimal_places=8, null=True)
+    exit_timestamp = models.DateTimeField(null=True)
+    pnl_pct = models.DecimalField(max_digits=10, decimal_places=2, null=True)  # Profit/Loss %
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'qt_trading_signal'
+        indexes = [
+            models.Index(fields=['symbol', 'interval', 'timestamp']),
+            models.Index(fields=['status', 'signal_type']),
+            models.Index(fields=['created_at']),
+        ]
+        ordering = ['-timestamp']
+    
+    def __str__(self):
+        return f"{self.symbol} {self.signal_type.upper()} @ {self.entry_price} ({self.confidence}%)"

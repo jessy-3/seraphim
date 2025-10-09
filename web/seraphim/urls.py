@@ -20,6 +20,9 @@ urlpatterns = [
     # Main application routes
     path('', views.DashboardView.as_view(), name='dashboard'),
     path('api/market-data/', views.MarketDataView.as_view(), name='market-data'),
+    path('api/market-regime/', views.MarketRegimeView.as_view(), name='market-regime'),
+    path('api/trading-signals/', views.TradingSignalsView.as_view(), name='trading-signals'),
+    path('api/trading-signals/<int:signal_id>/', views.TradingSignalDetailView.as_view(), name='trading-signal-detail'),
     path('api/', include('api.urls')),
     path('trading/', include('trading.urls')),
     

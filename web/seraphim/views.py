@@ -4,7 +4,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.utils.safestring import mark_safe
 from api.wsclient import ws_client
-from api.models import SymbolInfo, OhlcPrice, Indicator
+from api.models import SymbolInfo, OhlcPrice, Indicator, MarketRegime, TradingSignal
 from api.providers.kraken_provider import get_kraken_provider
 # Delay IBKR import to avoid uvloop conflicts during Django startup
 # from api.providers.ibkr_socket_provider import get_ibkr_socket_provider
@@ -275,6 +275,162 @@ class MarketDataView(View):
                     'ema_low_33': float(item.ema_low_33) if item.ema_low_33 else None,    # 下轨当值
                 } for item in indicators
             ]
+        }
+        
+        return JsonResponse(data)
+
+
+class MarketRegimeView(View):
+    """API view for market regime detection data"""
+    
+    def get(self, request):
+        symbol = request.GET.get('symbol', 'BTC/USD')
+        interval_seconds = int(request.GET.get('interval', '86400'))  # Default to 1D
+        
+        # Get latest market regime
+        latest_regime = MarketRegime.objects.filter(
+            symbol=symbol,
+            interval=interval_seconds
+        ).order_by('-timestamp').first()
+        
+        if not latest_regime:
+            return JsonResponse({
+                'error': 'No market regime data found',
+                'symbol': symbol,
+                'interval': interval_seconds
+            }, status=404)
+        
+        # Get higher timeframe regime for context
+        higher_interval = {3600: 14400, 14400: 86400, 86400: 604800, 604800: 604800}.get(interval_seconds, interval_seconds)
+        higher_regime = None
+        if higher_interval != interval_seconds:
+            higher_regime = MarketRegime.objects.filter(
+                symbol=symbol,
+                interval=higher_interval
+            ).order_by('-timestamp').first()
+        
+        data = {
+            'symbol': symbol,
+            'interval': interval_seconds,
+            'timestamp': latest_regime.timestamp.isoformat(),
+            'regime_type': latest_regime.regime_type,
+            'trend_direction': latest_regime.trend_direction,
+            'adx': float(latest_regime.adx) if latest_regime.adx else None,
+            'channel_in_pct': float(latest_regime.channel_in_pct) if latest_regime.channel_in_pct else None,
+            'channel_width_pct': float(latest_regime.channel_width_pct) if latest_regime.channel_width_pct else None,
+            'volume_ratio': float(latest_regime.volume_ratio) if latest_regime.volume_ratio else None,
+            'higher_tf_trend': latest_regime.higher_tf_trend,
+        }
+        
+        # Add higher timeframe data if available
+        if higher_regime:
+            data['higher_timeframe'] = {
+                'interval': higher_interval,
+                'regime_type': higher_regime.regime_type,
+                'trend_direction': higher_regime.trend_direction,
+                'adx': float(higher_regime.adx) if higher_regime.adx else None,
+            }
+        
+        return JsonResponse(data)
+
+
+class TradingSignalsView(View):
+    """API view for trading signals"""
+    
+    def get(self, request):
+        symbol = request.GET.get('symbol', None)  # Optional filter by symbol
+        interval_seconds = request.GET.get('interval', None)  # Optional filter by interval
+        status = request.GET.get('status', 'active')  # Default to active signals
+        limit = int(request.GET.get('limit', '50'))  # Limit number of results
+        
+        # Build query
+        query = TradingSignal.objects.all()
+        
+        if symbol:
+            query = query.filter(symbol=symbol)
+        
+        if interval_seconds:
+            query = query.filter(interval=int(interval_seconds))
+        
+        if status:
+            query = query.filter(status=status)
+        
+        # Order by timestamp (latest first) and limit
+        signals = query.order_by('-timestamp')[:limit]
+        
+        data = {
+            'signals': [
+                {
+                    'id': signal.id,
+                    'symbol': signal.symbol,
+                    'interval': signal.interval,
+                    'timestamp': signal.timestamp.isoformat(),
+                    'signal_type': signal.signal_type,
+                    'strategy': signal.strategy,
+                    'market_regime': signal.market_regime,
+                    'confidence': float(signal.confidence),
+                    'entry_price': float(signal.entry_price),
+                    'stop_loss': float(signal.stop_loss) if signal.stop_loss else None,
+                    'take_profit': float(signal.take_profit) if signal.take_profit else None,
+                    'risk_pct': float(signal.risk_pct) if signal.risk_pct else None,
+                    'reward_pct': float(signal.reward_pct) if signal.reward_pct else None,
+                    'trigger_reason': signal.trigger_reason,
+                    'rsi_value': float(signal.rsi_value) if signal.rsi_value else None,
+                    'macd_value': float(signal.macd_value) if signal.macd_value else None,
+                    'volume_ratio': float(signal.volume_ratio) if signal.volume_ratio else None,
+                    'status': signal.status,
+                    'exit_price': float(signal.exit_price) if signal.exit_price else None,
+                    'exit_timestamp': signal.exit_timestamp.isoformat() if signal.exit_timestamp else None,
+                    'pnl_pct': float(signal.pnl_pct) if signal.pnl_pct else None,
+                    'created_at': signal.created_at.isoformat(),
+                    'updated_at': signal.updated_at.isoformat(),
+                } for signal in signals
+            ],
+            'count': signals.count(),
+            'filters': {
+                'symbol': symbol,
+                'interval': interval_seconds,
+                'status': status,
+                'limit': limit
+            }
+        }
+        
+        return JsonResponse(data)
+
+
+class TradingSignalDetailView(View):
+    """API view for a single trading signal detail"""
+    
+    def get(self, request, signal_id):
+        try:
+            signal = TradingSignal.objects.get(id=signal_id)
+        except TradingSignal.DoesNotExist:
+            return JsonResponse({'error': 'Signal not found'}, status=404)
+        
+        data = {
+            'id': signal.id,
+            'symbol': signal.symbol,
+            'interval': signal.interval,
+            'timestamp': signal.timestamp.isoformat(),
+            'signal_type': signal.signal_type,
+            'strategy': signal.strategy,
+            'market_regime': signal.market_regime,
+            'confidence': float(signal.confidence),
+            'entry_price': float(signal.entry_price),
+            'stop_loss': float(signal.stop_loss) if signal.stop_loss else None,
+            'take_profit': float(signal.take_profit) if signal.take_profit else None,
+            'risk_pct': float(signal.risk_pct) if signal.risk_pct else None,
+            'reward_pct': float(signal.reward_pct) if signal.reward_pct else None,
+            'trigger_reason': signal.trigger_reason,
+            'rsi_value': float(signal.rsi_value) if signal.rsi_value else None,
+            'macd_value': float(signal.macd_value) if signal.macd_value else None,
+            'volume_ratio': float(signal.volume_ratio) if signal.volume_ratio else None,
+            'status': signal.status,
+            'exit_price': float(signal.exit_price) if signal.exit_price else None,
+            'exit_timestamp': signal.exit_timestamp.isoformat() if signal.exit_timestamp else None,
+            'pnl_pct': float(signal.pnl_pct) if signal.pnl_pct else None,
+            'created_at': signal.created_at.isoformat(),
+            'updated_at': signal.updated_at.isoformat(),
         }
         
         return JsonResponse(data)
