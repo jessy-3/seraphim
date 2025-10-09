@@ -84,42 +84,53 @@ def fetch_ohlc_for_symbol(provider, symbol, display_name, interval_name, limit=2
         
         print(f"  ✅ Received {len(ohlc_data)} data points")
         
-        # Clear existing data for this symbol and interval
-        deleted_count = OhlcPrice.objects.filter(
+        # Check existing data (don't delete, only add new records)
+        existing_count = OhlcPrice.objects.filter(
             symbol=display_name,
             interval=interval_seconds
         ).count()
         
-        if deleted_count > 0:
-            OhlcPrice.objects.filter(
-                symbol=display_name,
-                interval=interval_seconds
-            ).delete()
-            print(f"  🗑️  Deleted {deleted_count} existing records")
+        if existing_count > 0:
+            print(f"  📚 Found {existing_count} existing records (will add new only)")
         
-        # Prepare bulk insert
+        # Prepare bulk insert (only new records)
         ohlc_records = []
+        skipped = 0
         for candle in ohlc_data:
             # Kraken OHLC format: [timestamp, open, high, low, close, vwap, volume, count]
             timestamp = int(candle[0])
             date = datetime.fromtimestamp(timestamp, tz=timezone.utc)
             
-            ohlc_records.append(OhlcPrice(
-                unix=date,  # UnixDateTimeField expects datetime object
-                date=date,
+            # Check if this record already exists
+            exists = OhlcPrice.objects.filter(
                 symbol=display_name,
                 interval=interval_seconds,
-                open=Decimal(str(candle[1])),
-                high=Decimal(str(candle[2])),
-                low=Decimal(str(candle[3])),
-                close=Decimal(str(candle[4])),
-                volume=Decimal(str(candle[6])),
-                market_id=2  # Kraken
-            ))
+                unix=date
+            ).exists()
+            
+            if not exists:
+                ohlc_records.append(OhlcPrice(
+                    unix=date,  # UnixDateTimeField expects datetime object
+                    date=date,
+                    symbol=display_name,
+                    interval=interval_seconds,
+                    open=Decimal(str(candle[1])),
+                    high=Decimal(str(candle[2])),
+                    low=Decimal(str(candle[3])),
+                    close=Decimal(str(candle[4])),
+                    volume=Decimal(str(candle[6])),
+                    market_id=2  # Kraken
+                ))
+            else:
+                skipped += 1
         
         # Bulk insert
-        OhlcPrice.objects.bulk_create(ohlc_records, ignore_conflicts=True)
-        print(f"  ✅ Saved {len(ohlc_records)} records to database")
+        if ohlc_records:
+            OhlcPrice.objects.bulk_create(ohlc_records, ignore_conflicts=True)
+            print(f"  ✅ Saved {len(ohlc_records)} new records to database")
+        
+        if skipped > 0:
+            print(f"  ⏭️  Skipped {skipped} existing records")
         
         return len(ohlc_records)
         
