@@ -651,8 +651,14 @@ def generate_signal_for_symbol(symbol, interval=86400):
         existing_signal.save()
         print(f"  📊 Closed previous signal: {existing_signal.signal_type.upper()} (P&L: {existing_signal.pnl_pct:+.2f}%)")
     
-    # Only create new signal if it's not "hold" or if it's different from existing
-    if signal_data['signal_type'] != 'hold' and (not existing_signal or existing_signal.signal_type != signal_data['signal_type']):
+    # Always create new signal (for both BUY/SELL/HOLD)
+    # This ensures HOLD signals are visible in the UI
+    should_create = True
+    
+    print(f"  🔍 Debug: should_create={should_create}, signal_type={signal_data['signal_type']}")
+    
+    if should_create:
+        print(f"  🔍 Debug: Creating signal object...")
         signal = TradingSignal(
             symbol=symbol,
             unix=unix_dt,
@@ -674,8 +680,9 @@ def generate_signal_for_symbol(symbol, interval=86400):
             confidence_breakdown=signal_data.get('confidence_breakdown'),
             status='active'
         )
+        print(f"  🔍 Debug: About to save signal...")
         signal.save()
-        print(f"  💾 Saved new signal")
+        print(f"  💾 Saved new {signal_data['signal_type'].upper()} signal (ID: {signal.id})")
 
 def main():
     """Main function to generate trading signals for all symbols and intervals"""

@@ -108,7 +108,7 @@ DATABASES = {
 #        'ENGINE': 'django.db.backends.mysql',
 #        'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'vanilla',
+        'NAME': 'seraphim',
         'USER': 'postgres',
         'PASSWORD' : '2022pass',
         # 'HOST':'host.docker.internal',    # only for docker running locally

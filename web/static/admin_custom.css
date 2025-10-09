@@ -26,8 +26,8 @@ a[href="#content-start"]:focus {
     box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
 }
 
-/* Clean up toggle theme links spacing */
-body > a {
-    margin-right: 10px;
+/* Hide Django 5.x theme toggle links (they appear above Site administration) */
+body > a[href*="theme"] {
+    display: none !important;
 }
 
