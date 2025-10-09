@@ -599,6 +599,22 @@ def generate_signal_for_symbol(symbol, interval=86400):
     # If no signal generated, create a "hold" signal
     if not signal_data:
         print(f"  ⏸️  HOLD - No clear signal")
+        
+        # Create basic confidence breakdown for HOLD signal
+        confidence_breakdown = {
+            'base_score': 0,
+            'adjustments': {
+                '市场状态': f"{latest_regime.regime_type} - 无明确方向",
+            },
+            'final_score': 0,
+            'metrics': {
+                'RSI': f"{float(latest_indicator.rsi):.1f}" if latest_indicator.rsi else '--',
+                'MACD': f"{float(latest_indicator.macd):.4f}" if latest_indicator.macd else '--',
+                '市场类型': latest_regime.regime_type,
+                'ADX': f"{float(latest_regime.adx):.1f}" if latest_regime.adx else '--',
+            }
+        }
+        
         signal_data = {
             'signal_type': 'hold',
             'strategy': 'none',
@@ -609,6 +625,7 @@ def generate_signal_for_symbol(symbol, interval=86400):
             'risk_pct': None,
             'reward_pct': None,
             'trigger_reason': f"Price in channel ({latest_regime.regime_type} market)",
+            'confidence_breakdown': confidence_breakdown,
         }
     else:
         emoji = "✅" if signal_data['signal_type'] == 'buy' else "🔴" if signal_data['signal_type'] == 'sell' else "⏸️"

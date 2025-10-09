@@ -386,6 +386,7 @@ class TradingSignalsView(View):
                     'pnl_pct': float(signal.pnl_pct) if signal.pnl_pct else None,
                     'created_at': signal.created_at.isoformat(),
                     'updated_at': signal.updated_at.isoformat(),
+                    'confidence_breakdown': signal.confidence_breakdown,
                 } for signal in signals
             ],
             'count': signals.count(),
@@ -433,6 +434,7 @@ class TradingSignalDetailView(View):
             'pnl_pct': float(signal.pnl_pct) if signal.pnl_pct else None,
             'created_at': signal.created_at.isoformat(),
             'updated_at': signal.updated_at.isoformat(),
+            'confidence_breakdown': signal.confidence_breakdown,
         }
         
         return JsonResponse(data)

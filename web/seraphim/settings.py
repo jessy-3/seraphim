@@ -100,7 +100,7 @@ ASGI_APPLICATION = 'seraphim.asgi.application'
 # DATABASES = {
 #    'default': {
 #        'ENGINE': 'django.db.backends.sqlite3',
-#        'NAME': BASE_DIR / 'sqlite/vanilla.db',
+#        'NAME': BASE_DIR / 'sqlite/seraphim.db',
 #    }
 # }
 DATABASES = {
